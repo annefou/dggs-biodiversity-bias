@@ -1,0 +1,13 @@
+# Build
+_build/
+node_modules/
+
+# Generated notebooks
+notebooks/*.ipynb
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
