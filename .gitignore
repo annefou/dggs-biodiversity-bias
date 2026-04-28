@@ -2,12 +2,20 @@
 _build/
 node_modules/
 
-# Generated notebooks
+# Notebooks (generated from .py via jupytext)
 notebooks/*.ipynb
+
+# Data downloaded by 02_gbif_quercus_suber.py at first run
+data/*.json
 
 # Python
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
 
 # OS
 .DS_Store
+
+# Compressed archives
+*.7z
+*.tar.gz

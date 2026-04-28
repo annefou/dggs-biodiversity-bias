@@ -1,0 +1,74 @@
+name: Build & Deploy Jupyter Book
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          environment-name: dggs-biodiversity-bias
+          init-shell: bash
+          cache-environment: true
+
+      - name: Convert .py notebooks to .ipynb
+        shell: micromamba-shell {0}
+        run: |
+          for nb in notebooks/*.py; do
+            jupytext --to notebook "$nb"
+          done
+
+      - name: Execute notebooks (skip 02 — needs slow GBIF download)
+        shell: micromamba-shell {0}
+        run: |
+          for nb in notebooks/01_synthetic_proof.ipynb \
+                   notebooks/03_grid_anisotropy.ipynb \
+                   notebooks/04_ai_kernel_footprint.ipynb \
+                   notebooks/05_equal_area_comparison.ipynb \
+                   notebooks/06_hierarchical_indexing.ipynb; do
+            jupyter execute --inplace "$nb"
+          done
+
+      - name: Install MyST
+        shell: micromamba-shell {0}
+        run: |
+          npm install -g mystmd
+
+      - name: Build MyST site
+        shell: micromamba-shell {0}
+        env:
+          BASE_URL: /${{ github.event.repository.name }}
+        run: |
+          myst build --html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _build/html
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,21 @@
+version: 1
+project:
+  title: "dggs-biodiversity-bias — equal-area cells, AI-ready grids, and HEALPix hierarchy"
+  authors:
+    - name: Anne Fouilloux
+      orcid: 0000-0002-1784-2920
+      affiliations:
+        - LifeWatch ERIC
+  github: https://github.com/annefou/dggs-biodiversity-bias
+  license: MIT
+  toc:
+    - file: index.md
+    - file: notebooks/01_synthetic_proof.ipynb
+    - file: notebooks/02_gbif_quercus_suber.ipynb
+    - file: notebooks/03_grid_anisotropy.ipynb
+    - file: notebooks/04_ai_kernel_footprint.ipynb
+    - file: notebooks/05_equal_area_comparison.ipynb
+    - file: notebooks/06_hierarchical_indexing.ipynb
+
+site:
+  title: "dggs-biodiversity-bias"

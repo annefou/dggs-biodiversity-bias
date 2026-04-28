@@ -1,0 +1,17 @@
+name: dggs-biodiversity-bias
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy=2.2
+  - healpy=1.18
+  - cartopy=0.24
+  - matplotlib=3.10
+  - pillow=11.2
+  - requests=2.32
+  - jupytext
+  - nbclient
+  - ipykernel
+  - jupyter
+  - pip:
+      - zenodo-get

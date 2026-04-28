@@ -1,0 +1,103 @@
+cff-version: 1.2.0
+title: "dggs-biodiversity-bias — why equal-area cells matter for biodiversity (and why DGGS adds shape and hierarchy)"
+message: >-
+  If you use this software, please cite this repository together with
+  the foundational HEALPix and DGGS references and the recent
+  biodiversity-DGGS demonstrations listed below.
+type: software
+version: "0.1.0"
+authors:
+  - given-names: Anne
+    family-names: Fouilloux
+    orcid: "https://orcid.org/0000-0002-1784-2920"
+    affiliation: LifeWatch ERIC
+repository-code: "https://github.com/annefou/dggs-biodiversity-bias"
+license: MIT
+date-released: "2026-04-28"
+keywords:
+  - HEALPix
+  - DGGS
+  - discrete global grid systems
+  - equal-area projection
+  - Behrmann
+  - Mollweide
+  - biodiversity
+  - GBIF
+  - species distribution model
+  - SDM
+  - Quercus suber
+  - AI-ready
+  - FAIR
+  - reproducible research
+references:
+  - type: article
+    title: "HEALPix: A Framework for High-Resolution Discretization and Fast Analysis of Data Distributed on the Sphere"
+    authors:
+      - given-names: K. M.
+        family-names: Górski
+      - given-names: E.
+        family-names: Hivon
+      - given-names: A. J.
+        family-names: Banday
+      - given-names: B. D.
+        family-names: Wandelt
+      - given-names: F. K.
+        family-names: Hansen
+      - given-names: M.
+        family-names: Reinecke
+      - given-names: M.
+        family-names: Bartelmann
+    journal: "The Astrophysical Journal"
+    volume: 622
+    pages: 759-771
+    year: 2005
+    doi: "10.1086/427976"
+  - type: article
+    title: "Geodesic Discrete Global Grid Systems"
+    authors:
+      - given-names: Kevin
+        family-names: Sahr
+      - given-names: Denis
+        family-names: White
+      - given-names: A. Jon
+        family-names: Kimerling
+    journal: "Cartography and Geographic Information Science"
+    volume: 30
+    issue: 2
+    pages: 121-134
+    year: 2003
+    doi: "10.1559/152304003100011090"
+  - type: article
+    title: "Eco-ISEA3H, a machine learning ready spatial database for ecometric and species distribution modeling"
+    authors:
+      - given-names: Jorrit
+        family-names: Hauffe
+    journal: "Scientific Data"
+    volume: 10
+    pages: 77
+    year: 2023
+    doi: "10.1038/s41597-023-01966-x"
+  - type: article
+    title: "Area and shape distortions in open-source discrete global grid systems"
+    authors:
+      - given-names: Alexander
+        family-names: Kmoch
+    journal: "Big Earth Data"
+    volume: 6
+    issue: 3
+    pages: 256-275
+    year: 2022
+    doi: "10.1080/20964471.2022.2094926"
+  - type: article
+    title: "Species richness, hotspots, and the scale dependence of range maps in ecology and conservation"
+    authors:
+      - given-names: A. H.
+        family-names: Hurlbert
+      - given-names: W.
+        family-names: Jetz
+    journal: "Proceedings of the National Academy of Sciences U.S.A."
+    volume: 104
+    issue: 33
+    pages: 13384-13389
+    year: 2007
+    doi: "10.1073/pnas.0704469104"

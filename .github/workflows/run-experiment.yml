@@ -1,0 +1,45 @@
+name: Run experiment (CI smoke)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          environment-name: dggs-biodiversity-bias
+          init-shell: bash
+          cache-environment: true
+
+      - name: Convert .py notebooks to .ipynb
+        shell: micromamba-shell {0}
+        run: |
+          for nb in notebooks/*.py; do
+            jupytext --to notebook "$nb"
+          done
+
+      - name: Execute the synthetic + grid-shape + hierarchy notebooks
+        shell: micromamba-shell {0}
+        run: |
+          for nb in notebooks/01_synthetic_proof.ipynb \
+                   notebooks/03_grid_anisotropy.ipynb \
+                   notebooks/04_ai_kernel_footprint.ipynb \
+                   notebooks/05_equal_area_comparison.ipynb \
+                   notebooks/06_hierarchical_indexing.ipynb; do
+            jupyter execute --inplace "$nb"
+          done
+
+      - name: Upload generated figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          path: images/
