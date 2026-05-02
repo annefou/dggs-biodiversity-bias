@@ -15,3 +15,6 @@ dependencies:
   - jupyter
   - pip:
       - zenodo-get
+      - h3
+      - dggrid4py
+      - rhealpixdggs
