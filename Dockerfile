@@ -23,7 +23,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Build DGGRID from source for ISEA3H support via dggrid4py.
 # Pure-Python ISEA3H libraries do not exist on Linux/macOS — vgrid's
 # ISEA3H implementation is Windows-only (OpenEAGGR DLLs).
-RUN git clone --depth 1 https://github.com/sahrk/DGGRID.git /opt/DGGRID \
+#
+# Pinned to v8.41 (June 2025): later releases add DgHierNdxIntRF.cpp
+# whose operator* overloads in DgIVec2D.h are ambiguous under modern
+# GCC's stricter overload resolution. v8.41 predates that file and
+# is also the version dggrid4py 0.5.3 documentation references.
+RUN git clone --branch v8.41 --depth 1 https://github.com/sahrk/DGGRID.git /opt/DGGRID \
     && cd /opt/DGGRID && mkdir build && cd build \
     && cmake -DCMAKE_BUILD_TYPE=Release .. \
     && make -j"$(nproc)" \
