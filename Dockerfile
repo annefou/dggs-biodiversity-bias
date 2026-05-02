@@ -32,7 +32,7 @@ RUN git clone --branch v8.41 --depth 1 https://github.com/sahrk/DGGRID.git /opt/
     && cd /opt/DGGRID && mkdir build && cd build \
     && cmake -DCMAKE_BUILD_TYPE=Release .. \
     && make -j"$(nproc)" \
-    && make install \
+    && install -m 0755 src/apps/dggrid/dggrid /usr/local/bin/dggrid \
     && rm -rf /opt/DGGRID
 
 ENV DGGRID_PATH=/usr/local/bin/dggrid
