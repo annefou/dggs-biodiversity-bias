@@ -50,14 +50,28 @@
 # actually matter for biodiversity (0° to 70°N).
 
 # %%
+import os
+import shutil
+
 import cartopy.crs as ccrs
+import geopandas as gpd
+import h3
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
+from dggrid4py import DGGRIDv7
 from matplotlib.patches import Polygon
+from rhealpixdggs.rhp_wrappers import geo_to_rhp, rhp_to_geo_boundary
+from shapely.geometry import Point
 
 R = 6371.0  # Earth radius, km
 DEG = np.pi / 180.0
+
+# DGGRID handle, used by ISEA3H cell builder. Found via DGGRID_PATH env
+# var (set in Docker image) or PATH (conda-forge dggrid).
+_dggrid_bin = os.environ.get("DGGRID_PATH") or shutil.which("dggrid")
+_dggrid = DGGRIDv7(executable=_dggrid_bin, working_dir="/tmp",
+                   capture_logs=True, silent=True) if _dggrid_bin else None
 
 # %% [markdown]
 # ## Cell builders
@@ -114,6 +128,100 @@ def healpix_cell_vertices(lat_c, lon_c, nside=16, n_edge=20):
     cell_lat = 90.0 - np.degrees(np.arccos(z))
     cell_lon = np.degrees(np.arctan2(y, x))
     return cell_lat, cell_lon
+
+
+def h3_cell_vertices(lat_c, lon_c, resolution=3):
+    """H3 cell containing (lat_c, lon_c). Returns (lats, lons)."""
+    cell = h3.latlng_to_cell(float(lat_c), float(lon_c), resolution)
+    boundary = h3.cell_to_boundary(cell)  # tuple of (lat, lng)
+    lats = np.array([b[0] for b in boundary])
+    lons = np.array([b[1] for b in boundary])
+    return lats, lons
+
+
+def rhealpix_cell_vertices(lat_c, lon_c, resolution=4):
+    """rHEALPix cell containing (lat_c, lon_c). Returns (lats, lons).
+
+    NOTE: rhp_to_geo_boundary returns (lon, lat) — opposite order to H3.
+    """
+    cell = geo_to_rhp(float(lat_c), float(lon_c), resolution, plane=False)
+    boundary = rhp_to_geo_boundary(cell, plane=False)
+    lats = np.array([b[1] for b in boundary])
+    lons = np.array([b[0] for b in boundary])
+    return lats, lons
+
+
+def isea3h_cell_vertices(lat_c, lon_c, resolution=8):
+    """ISEA3H cell containing (lat_c, lon_c) (via dggrid4py)."""
+    if _dggrid is None:
+        raise RuntimeError(
+            "DGGRID binary not found. Install conda-forge dggrid=8.41 "
+            "or run inside the Docker container."
+        )
+    pt_gdf = gpd.GeoDataFrame(
+        {"id": [0]},
+        geometry=[Point(float(lon_c), float(lat_c))],
+        crs="EPSG:4326",
+    )
+    cells_df = _dggrid.cells_for_geo_points(
+        geodf_points_wgs84=pt_gdf, cell_ids_only=True,
+        dggs_type="ISEA3H", resolution=resolution,
+    )
+    cell_id = int(cells_df["name"].iloc[0])
+    poly_gdf = _dggrid.grid_cell_polygons_from_cellids(
+        cell_id_list=[cell_id], dggs_type="ISEA3H", resolution=resolution,
+        clip_subset_type="WHOLE_EARTH",
+    )
+    geom = poly_gdf.geometry.iloc[0]
+    coords = list(geom.exterior.coords)  # (lon, lat) tuples
+    lats = np.array([c[1] for c in coords])
+    lons = np.array([c[0] for c in coords])
+    return lats, lons
+
+
+def _projected_square_cell_vertices(lat_c, lon_c, proj, cell_side_km=100,
+                                    n_edge=40):
+    """Square cell of side `cell_side_km` in projected space of `proj`,
+    centred on the projection of (lat_c, lon_c). Returns (lats, lons).
+    """
+    side_m = cell_side_km * 1000.0
+    half = side_m / 2.0
+    xy = proj.transform_point(float(lon_c), float(lat_c), ccrs.PlateCarree())
+    cx, cy = xy[0], xy[1]
+
+    # Densify the square's edges in projected space
+    s = np.linspace(-half, half, n_edge)
+    bottom = [(cx + dx, cy - half) for dx in s]
+    right = [(cx + half, cy + dy) for dy in s]
+    top = [(cx + dx, cy + half) for dx in s[::-1]]
+    left = [(cx - half, cy + dy) for dy in s[::-1]]
+    xs = np.array([p[0] for p in bottom + right + top + left])
+    ys = np.array([p[1] for p in bottom + right + top + left])
+
+    # Unproject every vertex back to (lon, lat)
+    pc = ccrs.PlateCarree()
+    pts = pc.transform_points(proj, xs, ys)
+    lons = pts[:, 0]
+    lats = pts[:, 1]
+    return lats, lons
+
+
+def mollweide_cell_vertices(lat_c, lon_c, cell_side_km=100):
+    """Mollweide-projected square cell of given side, unprojected to lat-lon."""
+    return _projected_square_cell_vertices(
+        lat_c, lon_c, ccrs.Mollweide(), cell_side_km=cell_side_km,
+    )
+
+
+def eea_cell_vertices(lat_c, lon_c, cell_side_km=100):
+    """EEA reference grid (LAEA Europe / EPSG:3035) square cell."""
+    eea_proj = ccrs.LambertAzimuthalEqualArea(
+        central_longitude=10.0, central_latitude=52.0,
+        false_easting=4_321_000.0, false_northing=3_210_000.0,
+    )
+    return _projected_square_cell_vertices(
+        lat_c, lon_c, eea_proj, cell_side_km=cell_side_km,
+    )
 
 
 # %% [markdown]
@@ -230,35 +338,86 @@ for row, lat_c in enumerate(LATITUDES_OF_INTEREST):
         )
 
 # --- Aspect ratio across all biodiversity-relevant latitudes ---
+# Compares all seven grids in the same plot, grouped by family:
+#   - Lat-lon (broken)
+#   - Equal-area projections gridded in projected space (Behrmann, Mollweide, EEA)
+#   - DGGS family (HEALPix, H3, rHEALPix, ISEA3H)
 ax_bottom = fig.add_subplot(gs[3, :])
 lat_grid = np.linspace(0, 70, 71)
 
-aspect_latlon = []
-aspect_behrmann = []
-aspect_healpix = []
-for lat in lat_grid:
-    a1 = cell_metrics(*latlon_cell_vertices(lat, 0.0), lat, 0.0)[2]
-    a2 = cell_metrics(*behrmann_cell_vertices(lat, 0.0), lat, 0.0)[2]
-    a3 = cell_metrics(*healpix_cell_vertices(lat, 0.0, nside=NSIDE), lat, 0.0)[2]
-    aspect_latlon.append(a1)
-    aspect_behrmann.append(a2)
-    aspect_healpix.append(a3)
+# Lat-lon (cautionary baseline)
+aspect_latlon = [
+    cell_metrics(*latlon_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
 
-ax_bottom.plot(lat_grid, aspect_latlon, color="tab:red", lw=2,
-               label="Lat-lon 5°×5° (cells stay 5° wide → narrower than tall toward poles)")
-ax_bottom.plot(lat_grid, aspect_behrmann, color="tab:purple", lw=2,
-               label="Behrmann equal-area (constant area → wider than tall toward poles)")
-ax_bottom.plot(lat_grid, aspect_healpix, color="tab:blue", lw=2,
-               label=f"HEALPix nside={NSIDE} (compact at every latitude)")
+# Projection-based equal-area grids
+aspect_behrmann = [
+    cell_metrics(*behrmann_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
+aspect_mollweide = [
+    cell_metrics(*mollweide_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
+aspect_eea = [
+    cell_metrics(*eea_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
+
+# DGGS family
+aspect_healpix = [
+    cell_metrics(*healpix_cell_vertices(lat, 0.0, nside=NSIDE), lat, 0.0)[2]
+    for lat in lat_grid
+]
+aspect_h3 = [
+    cell_metrics(*h3_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
+aspect_rhealpix = [
+    cell_metrics(*rhealpix_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
+aspect_isea3h = [
+    cell_metrics(*isea3h_cell_vertices(lat, 0.0), lat, 0.0)[2]
+    for lat in lat_grid
+]
+
+# Tier 1 (broken)
+ax_bottom.plot(lat_grid, aspect_latlon, color="tab:red", lw=2.2,
+               label="Lat-lon 5° (broken: not equal-area, not compact)")
+
+# Tier 2 (equal-area projections, gridded in projected space)
+ax_bottom.plot(lat_grid, aspect_behrmann, color="tab:purple", lw=1.6,
+               label="Behrmann (equal-area projection)")
+ax_bottom.plot(lat_grid, aspect_mollweide, color="indigo", lw=1.6,
+               linestyle="--",
+               label="Mollweide (equal-area projection)")
+ax_bottom.plot(lat_grid, aspect_eea, color="orchid", lw=1.6, linestyle=":",
+               label="EEA reference grid (LAEA Europe)")
+
+# Tier 3 (DGGS family — preserves shape)
+ax_bottom.plot(lat_grid, aspect_healpix, color="tab:blue", lw=2.0,
+               label=f"HEALPix nside={NSIDE} (DGGS)")
+ax_bottom.plot(lat_grid, aspect_h3, color="tab:cyan", lw=1.6, linestyle="--",
+               label="H3 res 3 (DGGS, hexagonal)")
+ax_bottom.plot(lat_grid, aspect_rhealpix, color="teal", lw=1.6, linestyle=":",
+               label="rHEALPix res 4 (DGGS, WGS84)")
+ax_bottom.plot(lat_grid, aspect_isea3h, color="seagreen", lw=1.6, linestyle="-.",
+               label="ISEA3H res 8 (DGGS, hexagonal icosahedral)")
+
 ax_bottom.axhline(1.0, color="0.5", linestyle=":", linewidth=0.8)
 ax_bottom.set_xlabel("Latitude (°N)")
 ax_bottom.set_ylabel("Cell aspect ratio (longer / shorter axis)")
 ax_bottom.set_xlim(0, 70)
-ax_bottom.set_ylim(0.9, max(aspect_latlon + aspect_behrmann) * 1.05)
-ax_bottom.legend(loc="upper left", fontsize=9, framealpha=0.95)
+ax_bottom.set_ylim(
+    0.9,
+    max(aspect_latlon + aspect_behrmann + aspect_mollweide + aspect_eea) * 1.05,
+)
+ax_bottom.legend(loc="upper left", fontsize=8, framealpha=0.95, ncol=2)
 ax_bottom.set_title(
     "Cell aspect ratio across biodiversity-relevant latitudes — "
-    "equal-area projections fix area, not shape",
+    "DGGS family stays compact, projection family distorts",
     fontsize=11,
 )
 
