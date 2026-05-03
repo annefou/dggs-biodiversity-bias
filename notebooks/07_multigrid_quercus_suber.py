@@ -29,19 +29,20 @@
 # arguments separate them?
 #
 # This is the iteration that broadens notebook 02's two-grid story
-# into a comprehensive comparison. Grids are added in this commit and
-# a series of follow-ups:
+# into a comprehensive comparison. Grids are added incrementally:
 #
-# - This commit: **lat-lon 1°**, **HEALPix nside=64**, **H3 res 3**
-# - Follow-up: + rHEALPix, Mollweide, EEA reference grid (LAEA Europe)
+# - First commit: **lat-lon 1°**, **HEALPix nside=64**, **H3 res 3**
+# - This commit: + **rHEALPix res 4** (equal-area projected HEALPix variant)
+# - Follow-up: + Mollweide, EEA reference grid (LAEA Europe)
 # - Follow-up: + ISEA3H (requires the Docker container with DGGRID v8.41)
 #
-# ## Environment requirement
+# ## Environment requirements
 #
-# The new dependency in this notebook is `h3` (Uber H3 v4). Update your
-# environment with `mamba env update -f environment.yml` or run inside
-# the Docker container at `ghcr.io/annefou/dggs-biodiversity-bias:main`
-# where it is pre-installed.
+# Two new dependencies vs the original notebooks: `h3` (Uber H3 v4) and
+# `rhealpixdggs`. Update with `mamba env update -f environment.yml` or
+# run inside the Docker container at
+# `ghcr.io/annefou/dggs-biodiversity-bias:main` where both are
+# pre-installed.
 
 # %%
 import json
@@ -53,6 +54,10 @@ import h3
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
+from rhealpixdggs.rhp_wrappers import (
+    cell_area as rhp_cell_area_fn,
+    geo_to_rhp,
+)
 
 # %% [markdown]
 # ## Step 1: Load *Quercus suber* occurrences from the local cache
@@ -169,6 +174,31 @@ print(f"H3 res {H3_RES}: {len(counts_h3):,} occupied cells, "
       f"mean cell area {mean_h3_area:,.0f} km²")
 
 # %% [markdown]
+# ## Step 5b: Aggregate on rHEALPix resolution 4 (equal-area DGGS, projected variant)
+#
+# rHEALPix is the equal-area projected variant of HEALPix, defined on
+# the WGS84 ellipsoid. Cells are exactly equal-area by construction
+# (the "r" stands for "rearrangement" — the polar caps of the HEALPix
+# sphere are rearranged into a contiguous quadrilateral on the cube
+# faces). Hierarchical refinement is base 9 (each cell splits into 9
+# children), so resolution 4 has 6 × 9⁴ = 39,366 cells globally,
+# averaging ~13,000 km² each — comparable to HEALPix nside=64
+# (~10,400 km²) and H3 res 3 (~12,400 km²).
+
+# %%
+RHP_RES = 4
+
+rhp_cells = [
+    geo_to_rhp(float(lat), float(lon), RHP_RES, plane=False)
+    for lat, lon in zip(lats_r, lons_r)
+]
+counts_rhp = Counter(rhp_cells)
+rhp_areas = {c: rhp_cell_area_fn(c) for c in counts_rhp}
+mean_rhp_area = float(np.mean(list(rhp_areas.values()))) if rhp_areas else 0.0
+print(f"rHEALPix res {RHP_RES}: {len(counts_rhp):,} occupied cells, "
+      f"mean cell area {mean_rhp_area:,.0f} km²")
+
+# %% [markdown]
 # ## Step 6: Build a common colour scale and rasterise each grid
 #
 # To compare the three grids fairly we render each on the same plotting
@@ -191,15 +221,26 @@ healpix_density = healpix_field / HEALPIX_CELL_AREA
 healpix_density_masked = np.ma.masked_where(healpix_field == 0, healpix_density)
 
 # H3: lookup cell per plot pixel
-plot_cells = [
+plot_cells_h3 = [
     h3.latlng_to_cell(float(lat), float(lon), H3_RES)
     for lat, lon in zip(plot_lat_g.ravel(), plot_lon_g.ravel())
 ]
-plot_counts_h3 = np.array([counts_h3.get(c, 0) for c in plot_cells], dtype=float)
-plot_areas_h3 = np.array([h3_cell_area.get(c, mean_h3_area) for c in plot_cells])
+plot_counts_h3 = np.array([counts_h3.get(c, 0) for c in plot_cells_h3], dtype=float)
+plot_areas_h3 = np.array([h3_cell_area.get(c, mean_h3_area) for c in plot_cells_h3])
 h3_density = (plot_counts_h3 / plot_areas_h3).reshape(plot_lat_g.shape)
 h3_density_masked = np.ma.masked_where(plot_counts_h3.reshape(plot_lat_g.shape) == 0,
                                        h3_density)
+
+# rHEALPix: lookup cell per plot pixel
+plot_cells_rhp = [
+    geo_to_rhp(float(lat), float(lon), RHP_RES, plane=False)
+    for lat, lon in zip(plot_lat_g.ravel(), plot_lon_g.ravel())
+]
+plot_counts_rhp = np.array([counts_rhp.get(c, 0) for c in plot_cells_rhp], dtype=float)
+plot_areas_rhp = np.array([rhp_areas.get(c, mean_rhp_area) for c in plot_cells_rhp])
+rhp_density = (plot_counts_rhp / plot_areas_rhp).reshape(plot_lat_g.shape)
+rhp_density_masked = np.ma.masked_where(plot_counts_rhp.reshape(plot_lat_g.shape) == 0,
+                                        rhp_density)
 
 # Lat-lon: already on its own grid
 density_latlon_masked = np.ma.masked_where(counts_latlon == 0, density_latlon)
@@ -208,30 +249,34 @@ shared_vmax = float(np.percentile(np.concatenate([
     density_latlon_masked.compressed(),
     healpix_density_masked.compressed(),
     h3_density_masked.compressed(),
+    rhp_density_masked.compressed(),
 ]), 98))
 
 # %% [markdown]
-# ## Step 7: Three-panel comparison
+# ## Step 7: Four-panel comparison
 #
-# Same data, three grids. The two equal-area grids (HEALPix and H3)
-# should agree on the apparent density pattern. The lat-lon panel
-# is the cautionary case.
+# Same data, four grids. The three equal-area grids (HEALPix, H3,
+# rHEALPix) should agree on the apparent density pattern. The
+# lat-lon panel is the cautionary case.
 
 # %%
-fig = plt.figure(figsize=(18, 6))
-gs = fig.add_gridspec(1, 3, wspace=0.18)
+fig = plt.figure(figsize=(15, 11))
+gs = fig.add_gridspec(2, 2, wspace=0.18, hspace=0.28)
 
 panels = [
     ("A. Lat-lon 1° (cautionary baseline)\nrecords / km²",
      density_latlon_masked, lon_edges, lat_edges, "edges"),
-    (f"B. HEALPix nside={NSIDE} (equal-area DGGS)\nrecords / km²",
+    (f"B. HEALPix nside={NSIDE} (equal-area DGGS, sphere)\nrecords / km²",
      healpix_density_masked, plot_lons, plot_lats, "centres"),
     (f"C. H3 resolution {H3_RES} (hexagonal DGGS, ~equal-area)\nrecords / km²",
      h3_density_masked, plot_lons, plot_lats, "centres"),
+    (f"D. rHEALPix resolution {RHP_RES} (equal-area DGGS, WGS84)\nrecords / km²",
+     rhp_density_masked, plot_lons, plot_lats, "centres"),
 ]
 
 for k, (title, data, x, y, kind) in enumerate(panels):
-    ax = fig.add_subplot(gs[0, k], projection=ccrs.PlateCarree())
+    row, col = divmod(k, 2)
+    ax = fig.add_subplot(gs[row, col], projection=ccrs.PlateCarree())
     ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
     if kind == "edges":
         im = ax.pcolormesh(x, y, data, transform=ccrs.PlateCarree(),
@@ -246,9 +291,9 @@ for k, (title, data, x, y, kind) in enumerate(panels):
                  label="Records per km²", shrink=0.9)
 
 fig.suptitle(
-    "Quercus suber GBIF — same data on three grids "
-    "(lat-lon vs HEALPix vs H3)",
-    fontsize=14, fontweight="bold", y=1.02,
+    "Quercus suber GBIF — same data on four grids "
+    "(lat-lon vs HEALPix vs H3 vs rHEALPix)",
+    fontsize=14, fontweight="bold", y=1.00,
 )
 plt.savefig("../images/multigrid_quercus_suber.png", dpi=150,
             bbox_inches="tight")
@@ -257,15 +302,15 @@ plt.show()
 # %% [markdown]
 # ## Conclusion (this iteration)
 #
-# Two equal-area DGGS — HEALPix (exactly equal-area) and H3 (~1.4%
-# variation) — produce nearly identical density patterns over Q. suber's
-# Mediterranean range. Lat-lon shows the systematic equator-pole
-# distortion notebook 02 already isolated.
+# Three equal-area DGGS — HEALPix (exactly equal-area on the sphere),
+# H3 (~1.4% area variation, hexagonal, icosahedron-based), and
+# rHEALPix (exactly equal-area on the WGS84 ellipsoid, projected
+# cube-based) — produce nearly identical density patterns over
+# Q. suber's Mediterranean range. Lat-lon shows the systematic
+# equator-pole distortion notebook 02 already isolated.
 #
-# The next iterations of this notebook will add:
+# The remaining iterations of this notebook will add:
 #
-# - **rHEALPix** — equal-area projected variant of HEALPix (same family,
-#   different cell shape)
 # - **Mollweide** + **Behrmann** — equal-area cylindrical/pseudo-cylindrical
 #   projections, gridded in projected space (atlas practice)
 # - **EEA reference grid** — LAEA Europe, INSPIRE / Habitats Directive
