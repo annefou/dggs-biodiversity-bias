@@ -34,31 +34,41 @@
 # - First commit: **lat-lon 1°**, **HEALPix nside=64**, **H3 res 3**
 # - Second commit: + **rHEALPix res 4** (equal-area projected HEALPix variant)
 # - Third commit: + **Mollweide ~100 km cells** (equal-area pseudo-cylindrical projection — atlas practice)
-# - This commit: + **EEA reference grid 100 km cells** (LAEA Europe / EPSG:3035, INSPIRE / Habitats Directive standard)
-# - Follow-up: + ISEA3H (requires Docker container with DGGRID v8.41)
+# - Fourth commit: + **EEA reference grid 100 km cells** (LAEA Europe / EPSG:3035, INSPIRE / Habitats Directive standard)
+# - This commit: + **ISEA3H res 8** (icosahedral aperture-3 hexagonal DGGS, the system Eco-ISEA3H advocates)
 #
 # ## Environment requirements
 #
-# Two new dependencies vs the original notebooks: `h3` (Uber H3 v4) and
-# `rhealpixdggs`. Update with `mamba env update -f environment.yml` or
-# run inside the Docker container at
-# `ghcr.io/annefou/dggs-biodiversity-bias:main` where both are
-# pre-installed.
+# New dependencies vs the original notebooks: `h3` (Uber H3 v4),
+# `rhealpixdggs`, `dggrid4py`, and the **DGGRID** binary (for ISEA3H
+# aggregation). Update with `mamba env update -f environment.yml`
+# (DGGRID is on conda-forge as `dggrid=8.41`) or run inside the
+# Docker container at `ghcr.io/annefou/dggs-biodiversity-bias:main`
+# where everything is pre-installed.
+#
+# At runtime, `dggrid4py` needs the path to the DGGRID binary. We pick
+# it up from the `DGGRID_PATH` env var (set in the Docker image) or
+# fall back to the conda-installed `dggrid` on PATH.
 
 # %%
 import json
+import os
+import shutil
 from collections import Counter
 from pathlib import Path
 
 import cartopy.crs as ccrs
+import geopandas as gpd
 import h3
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
+from dggrid4py import DGGRIDv7
 from rhealpixdggs.rhp_wrappers import (
     cell_area as rhp_cell_area_fn,
     geo_to_rhp,
 )
+from shapely.geometry import Point
 
 # %% [markdown]
 # ## Step 1: Load *Quercus suber* occurrences from the local cache
@@ -289,6 +299,61 @@ print(f"EEA reference grid {EEA_CELL_SIDE_KM:.0f} km cells: "
       f"each {eea_cell_area_km2:,.0f} km² (projected)")
 
 # %% [markdown]
+# ## Step 5e: Aggregate on ISEA3H resolution 8 (icosahedral aperture-3 hexagonal DGGS)
+#
+# ISEA3H is the Discrete Global Grid System advocated by the Eco-ISEA3H
+# paper (*Scientific Data*, 2023, doi:10.1038/s41597-023-01966-x) for
+# "unbiased" Earth-observation aggregation. It is built on an
+# icosahedron (20 triangular faces) with aperture-3 hexagonal
+# refinement, and uses Snyder Equal Area projection so cells have
+# identical area on the sphere by construction.
+#
+# We use **resolution 8** (mean cell area ~7,774 km², 65,612 cells
+# globally) — the closest ISEA3H resolution to HEALPix nside=64
+# (~10,377 km²) without overshooting.
+#
+# Implemented via the `dggrid4py` Python wrapper around the DGGRID
+# C++ tool (Kevin Sahr, sahrk/DGGRID). Pure-Python ISEA3H is not
+# available on Linux/macOS — vgrid's ISEA3H is Windows-only via
+# OpenEAGGR DLLs. DGGRID 8.41 is on conda-forge for osx-arm64 and
+# baked into our Docker image.
+
+# %%
+ISEA3H_RES = 8
+
+dggrid_bin = os.environ.get("DGGRID_PATH") or shutil.which("dggrid")
+if dggrid_bin is None:
+    raise RuntimeError(
+        "Could not find dggrid binary on PATH. Install via "
+        "`mamba install -c conda-forge dggrid=8.41` or run inside the "
+        "Docker container."
+    )
+dggrid = DGGRIDv7(executable=dggrid_bin, working_dir="/tmp",
+                  capture_logs=True, silent=True)
+
+# Look up the resolution's cell area (used as constant divisor below)
+isea3h_stats = dggrid.grid_stats_table("ISEA3H", ISEA3H_RES + 1).iloc[ISEA3H_RES]
+isea3h_cell_area_km2 = float(isea3h_stats["Area (km^2)"])
+
+# Aggregate by routing points through DGGRID's cells_for_geo_points.
+gdf_data_pts = gpd.GeoDataFrame(
+    {"id": np.arange(len(lats_r))},
+    geometry=[Point(float(lon), float(lat)) for lat, lon in zip(lats_r, lons_r)],
+    crs="EPSG:4326",
+)
+data_cells_gdf = dggrid.cells_for_geo_points(
+    geodf_points_wgs84=gdf_data_pts,
+    cell_ids_only=True,
+    dggs_type="ISEA3H",
+    resolution=ISEA3H_RES,
+)
+# dggrid4py 0.5.3 returns the input GeoDataFrame augmented with
+# lon/lat/name columns; `name` is the resolved cell ID (sequence number).
+counts_isea3h = Counter(data_cells_gdf["name"].astype(str).tolist())
+print(f"ISEA3H res {ISEA3H_RES}: {len(counts_isea3h):,} occupied cells, "
+      f"each {isea3h_cell_area_km2:,.0f} km²")
+
+# %% [markdown]
 # ## Step 6: Build a common colour scale and rasterise each grid
 #
 # To compare the three grids fairly we render each on the same plotting
@@ -351,6 +416,28 @@ moll_density_masked = np.ma.masked_where(
     moll_field.reshape(plot_lat_g.shape) == 0, moll_density,
 )
 
+# ISEA3H: route plot mesh points through DGGRID, look up cell counts
+gdf_plot_pts = gpd.GeoDataFrame(
+    {"id": np.arange(plot_lon_g.size)},
+    geometry=[Point(float(lon), float(lat))
+              for lat, lon in zip(plot_lat_g.ravel(), plot_lon_g.ravel())],
+    crs="EPSG:4326",
+)
+plot_cells_gdf = dggrid.cells_for_geo_points(
+    geodf_points_wgs84=gdf_plot_pts,
+    cell_ids_only=True,
+    dggs_type="ISEA3H",
+    resolution=ISEA3H_RES,
+)
+plot_cells_isea = plot_cells_gdf["name"].astype(str).tolist()
+plot_counts_isea = np.array(
+    [counts_isea3h.get(c, 0) for c in plot_cells_isea], dtype=float,
+)
+isea_density = (plot_counts_isea / isea3h_cell_area_km2).reshape(plot_lat_g.shape)
+isea_density_masked = np.ma.masked_where(
+    plot_counts_isea.reshape(plot_lat_g.shape) == 0, isea_density,
+)
+
 # EEA: project plot mesh to LAEA Europe and look up bin
 xy_plot_eea = eea_proj.transform_points(
     ccrs.PlateCarree(), plot_lon_g.ravel(), plot_lat_g.ravel(),
@@ -380,18 +467,19 @@ shared_vmax = float(np.percentile(np.concatenate([
     rhp_density_masked.compressed(),
     moll_density_masked.compressed(),
     eea_density_masked.compressed(),
+    isea_density_masked.compressed(),
 ]), 98))
 
 # %% [markdown]
-# ## Step 7: Six-panel comparison
+# ## Step 7: Seven-panel comparison
 #
-# Same data, six grids. The five equal-area grids (HEALPix, H3,
-# rHEALPix, Mollweide, EEA) should agree on the apparent density
-# pattern. The lat-lon panel is the cautionary case.
+# Same data, seven grids. The six equal-area grids (HEALPix, H3,
+# rHEALPix, Mollweide, EEA, ISEA3H) should agree on the apparent
+# density pattern. The lat-lon panel is the cautionary case.
 
 # %%
-fig = plt.figure(figsize=(20, 11))
-gs = fig.add_gridspec(2, 3, wspace=0.18, hspace=0.28)
+fig = plt.figure(figsize=(20, 16))
+gs = fig.add_gridspec(3, 3, wspace=0.18, hspace=0.32)
 
 panels = [
     ("A. Lat-lon 1° (cautionary baseline)\nrecords / km²",
@@ -406,6 +494,8 @@ panels = [
      moll_density_masked, plot_lons, plot_lats, "centres"),
     (f"F. EEA reference grid {EEA_CELL_SIDE_KM:.0f} km cells (LAEA Europe / EPSG:3035)\nrecords / km²",
      eea_density_masked, plot_lons, plot_lats, "centres"),
+    (f"G. ISEA3H resolution {ISEA3H_RES} (icosahedral hexagonal DGGS)\nrecords / km²",
+     isea_density_masked, plot_lons, plot_lats, "centres"),
 ]
 
 for k, (title, data, x, y, kind) in enumerate(panels):
@@ -425,8 +515,8 @@ for k, (title, data, x, y, kind) in enumerate(panels):
                  label="Records per km²", shrink=0.9)
 
 fig.suptitle(
-    "Quercus suber GBIF — same data on six grids "
-    "(lat-lon vs HEALPix vs H3 vs rHEALPix vs Mollweide vs EEA)",
+    "Quercus suber GBIF — same data on seven grids "
+    "(lat-lon vs HEALPix vs H3 vs rHEALPix vs Mollweide vs EEA vs ISEA3H)",
     fontsize=14, fontweight="bold", y=1.00,
 )
 plt.savefig("../images/multigrid_quercus_suber.png", dpi=150,
@@ -434,22 +524,31 @@ plt.savefig("../images/multigrid_quercus_suber.png", dpi=150,
 plt.show()
 
 # %% [markdown]
-# ## Conclusion (this iteration)
+# ## Conclusion (final iteration)
 #
-# Five equal-area aggregation choices — HEALPix (exactly equal-area on
-# the sphere), H3 (~1.4% area variation, hexagonal, icosahedron-based),
-# rHEALPix (exactly equal-area on the WGS84 ellipsoid, projected
-# cube-based), Mollweide (equal-area pseudo-cylindrical projection,
-# gridded in projected coordinates), and the EEA reference grid (LAEA
-# Europe / EPSG:3035, the European biodiversity-reporting standard) —
-# produce visually similar density patterns over Q. suber's Mediterranean
-# range. Lat-lon shows the systematic equator-pole distortion notebook 02
+# Six equal-area aggregation choices — **HEALPix** (exactly equal-area
+# on the sphere), **H3** (~1.4% area variation, hexagonal,
+# icosahedron-based), **rHEALPix** (exactly equal-area on the WGS84
+# ellipsoid, projected cube-based), **Mollweide** (equal-area
+# pseudo-cylindrical projection, gridded in projected coordinates),
+# the **EEA reference grid** (LAEA Europe / EPSG:3035, the European
+# biodiversity-reporting standard), and **ISEA3H** (icosahedral
+# aperture-3 hexagonal DGGS, the system the Eco-ISEA3H paper
+# advocates) — all produce visually similar density patterns over
+# Q. suber's Mediterranean range.
+#
+# Lat-lon shows the systematic equator-pole distortion notebook 02
 # already isolated.
 #
-# The remaining iteration of this notebook will add:
-#
-# - **ISEA3H** — the DGGS the Eco-ISEA3H paper advocates (requires the
-#   Docker container at ghcr.io/annefou/dggs-biodiversity-bias:main with
-#   DGGRID v8.41)
-#
-# That addition produces the seventh and final panel.
+# **The biodiversity story this figure tells:** the choice of
+# equal-area grid (HEALPix vs H3 vs rHEALPix vs Mollweide vs EEA vs
+# ISEA3H) does not materially change the apparent density pattern at
+# this resolution. What matters is **using an equal-area grid in the
+# first place** — using lat-lon introduces a count-bias artefact
+# unrelated to the underlying species distribution. The argument for
+# HEALPix specifically (vs the other equal-area choices here) is
+# therefore not "more accurate counts" — it is the **AI-readiness
+# property** that notebooks 03–04 isolate: HEALPix is the only one of
+# these grids that simultaneously preserves equal-area, compact cell
+# shape across latitudes (Behrmann/Mollweide fail this), and
+# hierarchical refinement via deterministic bit-shift.
