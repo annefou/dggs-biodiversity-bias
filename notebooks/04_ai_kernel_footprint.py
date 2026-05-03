@@ -30,18 +30,34 @@
 # *the same shape* at every latitude. On rectilinear grids it doesn't.
 #
 # This notebook visualises exactly what a 3×3 ML kernel "sees" at
-# **65°N, 15°E (boreal Scandinavia)** on three grid systems:
-# **lat-lon 1°**, **Behrmann (cylindrical equal-area)**, and
-# **HEALPix nside=64**. Same anchor point. Same kernel size. Different
-# physical neighborhoods.
+# **65°N, 15°E (boreal Scandinavia)** on **eight grid systems** —
+# the projection family (lat-lon 1°, Behrmann, Mollweide, EEA
+# reference grid / LAEA Europe) and the DGGS family (HEALPix nside=64,
+# H3 res 3, rHEALPix res 4, ISEA3H res 8). Same anchor point. Same
+# kernel size. Different physical neighborhoods. Hexagonal grids
+# (H3, ISEA3H) use the natural 1-ring (7 cells) instead of a literal
+# 3×3 — that is the closest topological analogue to a CNN kernel on
+# a hexagonal lattice.
 
 # %%
+import os
+import shutil
+
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import geopandas as gpd
+import h3
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
+from dggrid4py import DGGRIDv7
 from matplotlib.patches import Patch
+from rhealpixdggs.rhp_wrappers import (
+    geo_to_rhp,
+    k_ring as rhp_k_ring,
+    rhp_to_geo_boundary,
+)
+from shapely.geometry import Point
 
 R = 6371.0  # Earth radius, km
 DEG = np.pi / 180.0
@@ -49,6 +65,11 @@ DEG = np.pi / 180.0
 ANCHOR_LAT = 65.0
 ANCHOR_LON = 15.0
 DISPLAY_HALF_EXTENT_KM = 1500e3  # ±1500 km LAEA window for display
+
+# DGGRID handle (conda-forge dggrid 8.41 or Docker container)
+_dggrid_bin = os.environ.get("DGGRID_PATH") or shutil.which("dggrid")
+_dggrid = DGGRIDv7(executable=_dggrid_bin, working_dir="/tmp",
+                   capture_logs=True, silent=True) if _dggrid_bin else None
 
 # %% [markdown]
 # ## Cell builders — one cell at a time, then a 3×3 window
@@ -148,6 +169,135 @@ def healpix_3x3_window(lat_c, lon_c, nside):
     return cells
 
 
+def h3_kernel(lat_c, lon_c, resolution=3):
+    """H3 cell at (lat_c, lon_c) plus its 1-ring (7 cells total).
+
+    H3 cells are hexagonal so the natural CNN-kernel analogue is the
+    1-ring (k=1 disk): centre + 6 immediate neighbours.
+    """
+    cell = h3.latlng_to_cell(float(lat_c), float(lon_c), resolution)
+    cells_in_ring = h3.grid_disk(cell, 1)
+    result = []
+    for c in cells_in_ring:
+        boundary = h3.cell_to_boundary(c)  # tuple of (lat, lng)
+        lats = np.array([b[0] for b in boundary])
+        lons = np.array([b[1] for b in boundary])
+        result.append((lats, lons))
+    return result
+
+
+def rhealpix_kernel(lat_c, lon_c, resolution=4):
+    """rHEALPix cell + 1-ring (9 cells, projected-cube quadrilateral)."""
+    cell = geo_to_rhp(float(lat_c), float(lon_c), resolution, plane=False)
+    ring = rhp_k_ring(cell, 1)
+    result = []
+    for c in ring:
+        boundary = rhp_to_geo_boundary(c, plane=False)  # (lon, lat) tuples
+        lats = np.array([b[1] for b in boundary])
+        lons = np.array([b[0] for b in boundary])
+        result.append((lats, lons))
+    return result
+
+
+def isea3h_kernel(lat_c, lon_c, resolution=8, sample_radius_km=200):
+    """ISEA3H cell at (lat_c, lon_c) + 1-ring of neighbours.
+
+    Found by sampling ~36 points in a circle around the anchor and
+    collecting the unique ISEA3H cells they fall into. At resolution 8
+    cells are ~88 km wide; a 200 km sampling radius reliably captures
+    the centre cell + its hexagonal 1-ring.
+    """
+    if _dggrid is None:
+        raise RuntimeError(
+            "DGGRID binary not found. Install conda-forge dggrid=8.41 "
+            "or run inside the Docker container."
+        )
+    n_samples = 36
+    lat_per_km = 1.0 / 111.0
+    lon_per_km = 1.0 / (111.0 * np.cos(np.radians(lat_c)))
+    sample_pts = [(lat_c, lon_c)]  # also probe the centre directly
+    for i in range(n_samples):
+        ang = 2 * np.pi * i / n_samples
+        sample_pts.append((
+            lat_c + sample_radius_km * lat_per_km * np.cos(ang),
+            lon_c + sample_radius_km * lon_per_km * np.sin(ang),
+        ))
+    pt_gdf = gpd.GeoDataFrame(
+        {"id": np.arange(len(sample_pts))},
+        geometry=[Point(float(lon), float(lat)) for lat, lon in sample_pts],
+        crs="EPSG:4326",
+    )
+    cells_df = _dggrid.cells_for_geo_points(
+        geodf_points_wgs84=pt_gdf, cell_ids_only=True,
+        dggs_type="ISEA3H", resolution=resolution,
+    )
+    unique_cell_ids = sorted({int(c) for c in cells_df["name"].astype(str)})
+    poly_gdf = _dggrid.grid_cell_polygons_from_cellids(
+        cell_id_list=unique_cell_ids, dggs_type="ISEA3H",
+        resolution=resolution, clip_subset_type="WHOLE_EARTH",
+    )
+    result = []
+    for geom in poly_gdf.geometry:
+        coords = list(geom.exterior.coords)  # (lon, lat)
+        lats = np.array([c[1] for c in coords])
+        lons = np.array([c[0] for c in coords])
+        result.append((lats, lons))
+    return result
+
+
+def _projected_3x3_kernel(lat_c, lon_c, proj, cell_side_km=100, n_edge=20):
+    """3×3 of projected-square cells centred on (lat_c, lon_c) in `proj`.
+    Each cell is densified along its edges so curvature is preserved
+    when the cell is unprojected back to lat-lon.
+    """
+    side_m = cell_side_km * 1000.0
+    half = side_m / 2.0
+    xy = proj.transform_point(float(lon_c), float(lat_c), ccrs.PlateCarree())
+    cx, cy = xy[0], xy[1]
+    pc = ccrs.PlateCarree()
+
+    def cell_quad(centre_x, centre_y):
+        s = np.linspace(-half, half, n_edge)
+        xs = np.r_[
+            centre_x + s,
+            np.full(n_edge, centre_x + half),
+            centre_x + s[::-1],
+            np.full(n_edge, centre_x - half),
+        ]
+        ys = np.r_[
+            np.full(n_edge, centre_y - half),
+            centre_y + s,
+            np.full(n_edge, centre_y + half),
+            centre_y + s[::-1],
+        ]
+        pts = pc.transform_points(proj, xs, ys)
+        return pts[:, 1], pts[:, 0]  # (lats, lons)
+
+    cells = []
+    for di in (-1, 0, 1):
+        for dj in (-1, 0, 1):
+            cells.append(cell_quad(cx + dj * side_m, cy + di * side_m))
+    return cells
+
+
+def mollweide_kernel(lat_c, lon_c, cell_side_km=100):
+    """3×3 of Mollweide-projected square cells, unprojected to lat-lon."""
+    return _projected_3x3_kernel(
+        lat_c, lon_c, ccrs.Mollweide(), cell_side_km=cell_side_km,
+    )
+
+
+def eea_kernel(lat_c, lon_c, cell_side_km=100):
+    """3×3 of EEA reference grid (LAEA Europe / EPSG:3035) square cells."""
+    eea_proj = ccrs.LambertAzimuthalEqualArea(
+        central_longitude=10.0, central_latitude=52.0,
+        false_easting=4_321_000.0, false_northing=3_210_000.0,
+    )
+    return _projected_3x3_kernel(
+        lat_c, lon_c, eea_proj, cell_side_km=cell_side_km,
+    )
+
+
 # %% [markdown]
 # ## Geographic-extent metrics
 #
@@ -191,24 +341,45 @@ def window_metrics(cells, lat_c, lon_c):
 
 # %%
 NSIDE = 64
+H3_RES = 3
+RHP_RES = 4
+ISEA3H_RES = 8
 display_proj = ccrs.LambertAzimuthalEqualArea(
     central_latitude=ANCHOR_LAT, central_longitude=ANCHOR_LON
 )
 
-windows = [
-    ("Lat-lon 1° × 1°", "tab:red",
+# Two tiers, four panels each.
+# Tier (a) — projection family: equal-area projections gridded in
+# projected space. Lat-lon is included as the cautionary baseline since
+# it is also a "rectilinear in projected/parametric space" choice.
+# Tier (b) — DGGS family: cells live directly on the sphere or
+# ellipsoid with no projection step.
+projection_family = [
+    ("Lat-lon 1° × 1° (cautionary baseline)", "tab:red",
      latlon_3x3_window(ANCHOR_LAT, ANCHOR_LON)),
-    ("Behrmann (equal-area)", "tab:purple",
+    ("Behrmann (equal-area projection)", "tab:purple",
      behrmann_3x3_window(ANCHOR_LAT, ANCHOR_LON)),
-    (f"HEALPix DGGS (nside={NSIDE})", "tab:blue",
+    ("Mollweide 100 km (equal-area projection)", "indigo",
+     mollweide_kernel(ANCHOR_LAT, ANCHOR_LON)),
+    ("EEA reference grid 100 km (LAEA Europe)", "orchid",
+     eea_kernel(ANCHOR_LAT, ANCHOR_LON)),
+]
+dggs_family = [
+    (f"HEALPix nside={NSIDE} (DGGS, sphere)", "tab:blue",
      healpix_3x3_window(ANCHOR_LAT, ANCHOR_LON, NSIDE)),
+    (f"H3 res {H3_RES} (DGGS, hexagonal)", "tab:cyan",
+     h3_kernel(ANCHOR_LAT, ANCHOR_LON, H3_RES)),
+    (f"rHEALPix res {RHP_RES} (DGGS, WGS84)", "teal",
+     rhealpix_kernel(ANCHOR_LAT, ANCHOR_LON, RHP_RES)),
+    (f"ISEA3H res {ISEA3H_RES} (DGGS, hex icosahedral)", "seagreen",
+     isea3h_kernel(ANCHOR_LAT, ANCHOR_LON, ISEA3H_RES)),
 ]
 
-fig = plt.figure(figsize=(15, 7.5))
-gs = fig.add_gridspec(1, 3, wspace=0.05)
+fig = plt.figure(figsize=(20, 11))
+gs = fig.add_gridspec(2, 4, wspace=0.05, hspace=0.18)
 
-for col, (name, color, cells) in enumerate(windows):
-    ax = fig.add_subplot(gs[0, col], projection=display_proj)
+
+def _draw_kernel_panel(ax, name, color, cells):
     ax.set_extent(
         [-DISPLAY_HALF_EXTENT_KM, DISPLAY_HALF_EXTENT_KM,
          -DISPLAY_HALF_EXTENT_KM, DISPLAY_HALF_EXTENT_KM],
@@ -217,45 +388,61 @@ for col, (name, color, cells) in enumerate(windows):
     ax.add_feature(cfeature.LAND, facecolor="0.92")
     ax.add_feature(cfeature.OCEAN, facecolor="0.96")
     ax.coastlines(linewidth=0.5, color="0.4")
-    gl = ax.gridlines(linewidth=0.3, color="0.7", alpha=0.7)
-
+    ax.gridlines(linewidth=0.3, color="0.7", alpha=0.7)
     for lats, lons in cells:
         ax.fill(lons, lats, transform=ccrs.PlateCarree(),
                 facecolor=color, alpha=0.40, edgecolor=color, linewidth=0.8)
-
-    # Anchor point
-    ax.plot(ANCHOR_LON, ANCHOR_LAT, marker="o", markersize=8,
+    # Anchor
+    ax.plot(ANCHOR_LON, ANCHOR_LAT, marker="o", markersize=7,
             markerfacecolor="black", markeredgecolor="white",
-            markeredgewidth=1.5, transform=ccrs.PlateCarree(), zorder=5)
-
+            markeredgewidth=1.2, transform=ccrs.PlateCarree(), zorder=5)
     width, height, aspect = window_metrics(cells, ANCHOR_LAT, ANCHOR_LON)
-    ax.set_title(name, fontsize=12, fontweight="bold")
+    ax.set_title(name, fontsize=10, fontweight="bold")
     ax.text(
         0.02, 0.98,
-        f"3×3 kernel at 65°N, 15°E\n"
-        f"E–W span: {width:.0f} km\n"
-        f"N–S span: {height:.0f} km\n"
-        f"aspect:   {aspect:.1f}",
+        f"@ 65°N, 15°E\n"
+        f"E–W: {width:.0f} km\n"
+        f"N–S: {height:.0f} km\n"
+        f"aspect: {aspect:.1f}",
         transform=ax.transAxes,
         ha="left", va="top",
-        fontsize=10,
+        fontsize=8.5,
         family="monospace",
         bbox=dict(facecolor="white", edgecolor="0.6",
-                  boxstyle="round,pad=0.4", alpha=0.93),
+                  boxstyle="round,pad=0.3", alpha=0.93),
     )
 
+
+# Row 0 — projection family
+for col, (name, color, cells) in enumerate(projection_family):
+    ax = fig.add_subplot(gs[0, col], projection=display_proj)
+    _draw_kernel_panel(ax, name, color, cells)
+
+# Row 1 — DGGS family
+for col, (name, color, cells) in enumerate(dggs_family):
+    ax = fig.add_subplot(gs[1, col], projection=display_proj)
+    _draw_kernel_panel(ax, name, color, cells)
+
 fig.suptitle(
-    "What does a 3×3 ML kernel see at 65°N? "
-    "— same anchor, same kernel size, different physical neighborhoods",
-    fontsize=14, fontweight="bold", y=1.02,
+    "What does an ML kernel see at 65°N? — projection family (top row) vs DGGS family (bottom row)",
+    fontsize=14, fontweight="bold", y=0.995,
 )
 
-# Subtitle / caption strip
+# Row labels on the left margin
+fig.text(0.085, 0.74, "Projection-based grids\n(Tier 2: equal-area\nbut shape distorts)",
+         ha="right", va="center", fontsize=10, fontweight="bold",
+         color="tab:purple", rotation=90)
+fig.text(0.085, 0.27, "DGGS family\n(Tier 3: equal-area\nAND compact shape)",
+         ha="right", va="center", fontsize=10, fontweight="bold",
+         color="tab:blue", rotation=90)
+
+# Caption
 fig.text(
     0.5, 0.02,
     "Models trained on a stacked feature cube (GBIF · ERA5 · Copernicus · soils · MODIS …) "
     "implicitly assume each cell index represents the same geographic place across all layers.\n"
-    "Lat-lon and Behrmann break that assumption at high latitudes; HEALPix preserves it.",
+    "Lat-lon, Behrmann, Mollweide, and the EEA reference grid all break that assumption at high latitudes; "
+    "every member of the DGGS family preserves it.",
     ha="center", va="bottom", fontsize=10, style="italic", color="0.25",
 )
 
@@ -265,37 +452,47 @@ plt.show()
 # %% [markdown]
 # ## What the figure shows
 #
-# All three panels are drawn on the same Lambert azimuthal equal-area
+# All eight panels are drawn on the same Lambert azimuthal equal-area
 # map centred on **65°N, 15°E**. The black dot marks the anchor pixel.
-# Every panel shows the **same conceptual operator** — a 3×3 ML kernel —
-# but the *physical* geography that operator covers is wildly different:
+# Every panel shows the **same conceptual operator** — an ML kernel
+# (3×3 quadrilateral or hexagonal 1-ring) — but the *physical*
+# geography that operator covers depends entirely on the grid.
 #
-# - **Lat-lon 1°.** A 3°×3° window. East-west extent shrinks with
-#   latitude (1° lon at 65°N is 47 km, vs 111 km at the equator). The
-#   kernel sees a thin, north-south oriented strip of geography. A
-#   model learning to associate "ocean to the west, mountains to the
-#   east" via such a kernel learns one operator near the equator and
-#   a *different* one near the poles, even when the underlying biology
-#   has the same structure.
+# **Top row — projection family (Tier 2).** All four solve the
+# count-bias problem from notebook 02 (lat-lon is included as the
+# cautionary tier-1 baseline; the other three are equal-area
+# projections). But every one of them distorts cell shape at 65°N:
 #
-# - **Behrmann (equal-area).** Equal area is preserved, so the
-#   kernel's total km² is the same as at the equator. But the cells
-#   become tall and narrow — E-W ground distance shrinks with
-#   cos(φ) while N-S stretches by 1/cos(φ) to keep area constant.
-#   At 65°N the 3×3 kernel sees a long vertical strip ~5× taller
-#   than wide, spanning multiple biomes north-south while compressing
-#   the east-west signal. Feature vectors at different latitudes
-#   correspond to different physical neighbourhood shapes.
+# - **Lat-lon 1°.** East-west extent shrinks with latitude (1° lon at
+#   65°N is 47 km, vs 111 km at the equator). Tall, narrow strip.
+# - **Behrmann.** Equal area preserved by stretching N–S to compensate
+#   for E–W shrinkage. Cells are ~5× taller than wide at 65°N.
+# - **Mollweide.** Equal area preserved with smoother distortion than
+#   Behrmann, but cells still distort poleward.
+# - **EEA reference grid (LAEA Europe).** Anchored at 52°N; at 65°N the
+#   distance from the projection centre introduces measurable shape
+#   warping. Every European country far from (52°N, 10°E) gets a
+#   slightly different cell shape.
 #
-# - **HEALPix DGGS (nside=64).** Cells are compact at every latitude.
-#   The 3×3 kernel sees a roughly circular ~250 km neighbourhood that
-#   means the same geographic operator at the equator, in Scandinavia,
-#   and in the Arctic. A model trained on a global stack is learning
-#   one transferable operator.
+# **Bottom row — DGGS family (Tier 3).** Cells live directly on the
+# sphere or ellipsoid. Every member of the family stays compact at 65°N:
 #
-# **The slide-5 takeaway.** The cost of a non-DGGS grid for AI work is
-# not aesthetic; it is *feature-vector incoherence* across the
-# training set. Equal-area cylindrical projections solve the area
-# problem but leave the **shape** problem unsolved — and shape is
-# what determines the geography a CNN's receptive field actually
-# integrates over.
+# - **HEALPix nside=64.** Diamond cells, ~aspect 1.3.
+# - **H3 res 3.** Hexagonal cells, ~aspect 1.0 (hexagons are isotropic).
+# - **rHEALPix res 4.** Equal-area on WGS84 ellipsoid; quadrilateral
+#   cells from cube-face projection, ~aspect 1.2.
+# - **ISEA3H res 8.** Hexagonal icosahedral DGGS, ~aspect 1.0.
+#
+# **The 3-tier takeaway.** Equal-area is necessary (notebook 02 shows
+# this for biodiversity counts; notebook 07 shows that *every* tier-2
+# and tier-3 grid passes the count test). But for **AI-ready,
+# multi-resolution, cloud-native** workflows — climate-impact
+# attribution, restoration monitoring, fine-resolution
+# Copernicus×biodiversity stacks — equal-area is not enough. Cell
+# *shape* must also be preserved across latitudes so that a CNN's
+# receptive field means the same geographic operator everywhere.
+# That is the property the **DGGS family** has and the projection
+# family does not. Choosing HEALPix specifically over H3 / rHEALPix /
+# ISEA3H is then a question of hierarchical refinement, ellipsoid
+# alignment, and ecosystem (notebook 06 and notebook 08 — coming
+# next).
