@@ -34,14 +34,17 @@ jobs:
             jupytext --to notebook "$nb"
           done
 
-      - name: Execute notebooks (skip 02 — needs slow GBIF download)
+      - name: Execute notebooks
         shell: micromamba-shell {0}
         run: |
           for nb in notebooks/01_synthetic_proof.ipynb \
+                   notebooks/02_gbif_quercus_suber.ipynb \
                    notebooks/03_grid_anisotropy.ipynb \
                    notebooks/04_ai_kernel_footprint.ipynb \
                    notebooks/05_equal_area_comparison.ipynb \
-                   notebooks/06_hierarchical_indexing.ipynb; do
+                   notebooks/06_hierarchical_indexing.ipynb \
+                   notebooks/07_multigrid_quercus_suber.ipynb \
+                   notebooks/08_sphere_vs_ellipsoid.ipynb; do
             jupyter execute --inplace "$nb"
           done
 

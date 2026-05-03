@@ -5,8 +5,12 @@ node_modules/
 # Notebooks (generated from .py via jupytext)
 notebooks/*.ipynb
 
-# Data downloaded by 02_gbif_quercus_suber.py at first run
+# Data downloaded by 02_gbif_quercus_suber.py at first run.
+# Exception: the Q. suber cache (~455 KB) is committed so notebooks
+# 02 and 07 reproduce offline (and CI can execute them without
+# hitting GBIF's slow throttled deep-offset API).
 data/*.json
+!data/quercus_suber_gbif.json
 
 # Python
 __pycache__/
