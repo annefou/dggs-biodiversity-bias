@@ -5,18 +5,20 @@ NOTEBOOKS = [
     "04_ai_kernel_footprint",
     "05_equal_area_comparison",
     "06_hierarchical_indexing",
+    "07_multigrid_quercus_suber",
 ]
 
 IMAGES = {
-    "01_synthetic_proof":      ["images/map_raw_counts.png",
-                                "images/raw_counts_by_latitude.png",
-                                "images/density_vs_latitude.png",
-                                "images/density_histogram.png"],
-    "02_gbif_quercus_suber":   ["images/gbif_quercus_suber.png"],
-    "03_grid_anisotropy":      ["images/grid_anisotropy.png"],
-    "04_ai_kernel_footprint":  ["images/ai_kernel_footprint.png"],
-    "05_equal_area_comparison":["images/equal_area_comparison.png"],
-    "06_hierarchical_indexing":["images/hierarchical_indexing.png"],
+    "01_synthetic_proof":         ["images/map_raw_counts.png",
+                                   "images/raw_counts_by_latitude.png",
+                                   "images/density_vs_latitude.png",
+                                   "images/density_histogram.png"],
+    "02_gbif_quercus_suber":      ["images/gbif_quercus_suber.png"],
+    "03_grid_anisotropy":         ["images/grid_anisotropy.png"],
+    "04_ai_kernel_footprint":     ["images/ai_kernel_footprint.png"],
+    "05_equal_area_comparison":   ["images/equal_area_comparison.png"],
+    "06_hierarchical_indexing":   ["images/hierarchical_indexing.png"],
+    "07_multigrid_quercus_suber": ["images/multigrid_quercus_suber.png"],
 }
 
 
