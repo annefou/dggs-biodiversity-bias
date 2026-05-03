@@ -32,9 +32,9 @@
 # into a comprehensive comparison. Grids are added incrementally:
 #
 # - First commit: **lat-lon 1°**, **HEALPix nside=64**, **H3 res 3**
-# - This commit: + **rHEALPix res 4** (equal-area projected HEALPix variant)
-# - Follow-up: + Mollweide, EEA reference grid (LAEA Europe)
-# - Follow-up: + ISEA3H (requires the Docker container with DGGRID v8.41)
+# - Second commit: + **rHEALPix res 4** (equal-area projected HEALPix variant)
+# - This commit: + **Mollweide ~100 km cells** (equal-area pseudo-cylindrical projection — atlas practice)
+# - Follow-up: + EEA reference grid (LAEA Europe), ISEA3H (requires Docker)
 #
 # ## Environment requirements
 #
@@ -199,6 +199,49 @@ print(f"rHEALPix res {RHP_RES}: {len(counts_rhp):,} occupied cells, "
       f"mean cell area {mean_rhp_area:,.0f} km²")
 
 # %% [markdown]
+# ## Step 5c: Aggregate on Mollweide (equal-area projection, atlas practice)
+#
+# Biodiversity atlases routinely reproject occurrence data through an
+# equal-area projection (Mollweide, Behrmann, Goode homolosine, sinusoidal)
+# and then aggregate on a regular grid in projected coordinates. The
+# projection preserves cell area on the globe; the regular grid in the
+# projected plane gives every cell the same area in projected meters.
+#
+# We size the Mollweide cells to ~100 km × 100 km in projected space
+# (10,000 km² each), comparable to HEALPix nside=64.
+
+# %%
+MOLL_CELL_SIDE_KM = 100.0
+MOLL_CELL_SIDE_M = MOLL_CELL_SIDE_KM * 1000.0
+moll_cell_area_km2 = MOLL_CELL_SIDE_KM ** 2
+
+moll_proj = ccrs.Mollweide()
+xy_data_moll = moll_proj.transform_points(
+    ccrs.PlateCarree(), lons_r, lats_r,
+)
+x_moll_data = xy_data_moll[:, 0]
+y_moll_data = xy_data_moll[:, 1]
+
+# Edges in projected meters, covering the data extent + a margin
+margin_m = MOLL_CELL_SIDE_M * 2
+x_edges_moll = np.arange(
+    x_moll_data.min() - margin_m,
+    x_moll_data.max() + margin_m + MOLL_CELL_SIDE_M,
+    MOLL_CELL_SIDE_M,
+)
+y_edges_moll = np.arange(
+    y_moll_data.min() - margin_m,
+    y_moll_data.max() + margin_m + MOLL_CELL_SIDE_M,
+    MOLL_CELL_SIDE_M,
+)
+counts_moll, _, _ = np.histogram2d(
+    y_moll_data, x_moll_data, bins=[y_edges_moll, x_edges_moll],
+)
+print(f"Mollweide {MOLL_CELL_SIDE_KM:.0f} km cells: "
+      f"{int(np.sum(counts_moll > 0)):,} occupied, "
+      f"each {moll_cell_area_km2:,.0f} km² (projected)")
+
+# %% [markdown]
 # ## Step 6: Build a common colour scale and rasterise each grid
 #
 # To compare the three grids fairly we render each on the same plotting
@@ -242,6 +285,25 @@ rhp_density = (plot_counts_rhp / plot_areas_rhp).reshape(plot_lat_g.shape)
 rhp_density_masked = np.ma.masked_where(plot_counts_rhp.reshape(plot_lat_g.shape) == 0,
                                         rhp_density)
 
+# Mollweide: project plot mesh to Mollweide and look up bin
+xy_plot_moll = moll_proj.transform_points(
+    ccrs.PlateCarree(), plot_lon_g.ravel(), plot_lat_g.ravel(),
+)
+ix_moll = np.digitize(xy_plot_moll[:, 0], x_edges_moll) - 1
+iy_moll = np.digitize(xy_plot_moll[:, 1], y_edges_moll) - 1
+in_bounds_moll = (
+    (ix_moll >= 0) & (ix_moll < counts_moll.shape[1])
+    & (iy_moll >= 0) & (iy_moll < counts_moll.shape[0])
+)
+ix_moll_clip = np.clip(ix_moll, 0, counts_moll.shape[1] - 1)
+iy_moll_clip = np.clip(iy_moll, 0, counts_moll.shape[0] - 1)
+moll_field = counts_moll[iy_moll_clip, ix_moll_clip].astype(float)
+moll_field[~in_bounds_moll] = 0
+moll_density = (moll_field / moll_cell_area_km2).reshape(plot_lat_g.shape)
+moll_density_masked = np.ma.masked_where(
+    moll_field.reshape(plot_lat_g.shape) == 0, moll_density,
+)
+
 # Lat-lon: already on its own grid
 density_latlon_masked = np.ma.masked_where(counts_latlon == 0, density_latlon)
 
@@ -250,18 +312,19 @@ shared_vmax = float(np.percentile(np.concatenate([
     healpix_density_masked.compressed(),
     h3_density_masked.compressed(),
     rhp_density_masked.compressed(),
+    moll_density_masked.compressed(),
 ]), 98))
 
 # %% [markdown]
-# ## Step 7: Four-panel comparison
+# ## Step 7: Five-panel comparison
 #
-# Same data, four grids. The three equal-area grids (HEALPix, H3,
-# rHEALPix) should agree on the apparent density pattern. The
-# lat-lon panel is the cautionary case.
+# Same data, five grids. The four equal-area grids (HEALPix, H3,
+# rHEALPix, Mollweide) should agree on the apparent density pattern.
+# The lat-lon panel is the cautionary case.
 
 # %%
-fig = plt.figure(figsize=(15, 11))
-gs = fig.add_gridspec(2, 2, wspace=0.18, hspace=0.28)
+fig = plt.figure(figsize=(20, 11))
+gs = fig.add_gridspec(2, 3, wspace=0.18, hspace=0.28)
 
 panels = [
     ("A. Lat-lon 1° (cautionary baseline)\nrecords / km²",
@@ -272,10 +335,12 @@ panels = [
      h3_density_masked, plot_lons, plot_lats, "centres"),
     (f"D. rHEALPix resolution {RHP_RES} (equal-area DGGS, WGS84)\nrecords / km²",
      rhp_density_masked, plot_lons, plot_lats, "centres"),
+    (f"E. Mollweide {MOLL_CELL_SIDE_KM:.0f} km cells (equal-area projection)\nrecords / km²",
+     moll_density_masked, plot_lons, plot_lats, "centres"),
 ]
 
 for k, (title, data, x, y, kind) in enumerate(panels):
-    row, col = divmod(k, 2)
+    row, col = divmod(k, 3)
     ax = fig.add_subplot(gs[row, col], projection=ccrs.PlateCarree())
     ax.set_extent([LON_MIN, LON_MAX, LAT_MIN, LAT_MAX], crs=ccrs.PlateCarree())
     if kind == "edges":
@@ -291,8 +356,8 @@ for k, (title, data, x, y, kind) in enumerate(panels):
                  label="Records per km²", shrink=0.9)
 
 fig.suptitle(
-    "Quercus suber GBIF — same data on four grids "
-    "(lat-lon vs HEALPix vs H3 vs rHEALPix)",
+    "Quercus suber GBIF — same data on five grids "
+    "(lat-lon vs HEALPix vs H3 vs rHEALPix vs Mollweide)",
     fontsize=14, fontweight="bold", y=1.00,
 )
 plt.savefig("../images/multigrid_quercus_suber.png", dpi=150,
@@ -302,19 +367,19 @@ plt.show()
 # %% [markdown]
 # ## Conclusion (this iteration)
 #
-# Three equal-area DGGS — HEALPix (exactly equal-area on the sphere),
-# H3 (~1.4% area variation, hexagonal, icosahedron-based), and
+# Four equal-area aggregation choices — HEALPix (exactly equal-area on
+# the sphere), H3 (~1.4% area variation, hexagonal, icosahedron-based),
 # rHEALPix (exactly equal-area on the WGS84 ellipsoid, projected
-# cube-based) — produce nearly identical density patterns over
-# Q. suber's Mediterranean range. Lat-lon shows the systematic
-# equator-pole distortion notebook 02 already isolated.
+# cube-based), and Mollweide (equal-area pseudo-cylindrical projection,
+# gridded in projected coordinates — the standard atlas practice) —
+# produce visually similar density patterns over Q. suber's Mediterranean
+# range. Lat-lon shows the systematic equator-pole distortion notebook 02
+# already isolated.
 #
 # The remaining iterations of this notebook will add:
 #
-# - **Mollweide** + **Behrmann** — equal-area cylindrical/pseudo-cylindrical
-#   projections, gridded in projected space (atlas practice)
-# - **EEA reference grid** — LAEA Europe, INSPIRE / Habitats Directive
-#   standard for European biodiversity reporting
+# - **EEA reference grid** — LAEA Europe (EPSG:3035), INSPIRE / Habitats
+#   Directive standard for European biodiversity reporting
 # - **ISEA3H** — the DGGS the Eco-ISEA3H paper advocates (requires the
 #   Docker container at ghcr.io/annefou/dggs-biodiversity-bias:main with
 #   DGGRID v8.41)
