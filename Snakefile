@@ -20,7 +20,8 @@ IMAGES = {
     "05_equal_area_comparison":   ["images/equal_area_comparison.png"],
     "06_hierarchical_indexing":   ["images/hierarchical_indexing.png"],
     "07_multigrid_quercus_suber": ["images/multigrid_quercus_suber.png"],
-    "08_sphere_vs_ellipsoid":     ["images/sphere_vs_ellipsoid_area_error.png"],
+    "08_sphere_vs_ellipsoid":     ["images/sphere_vs_ellipsoid_area_error.png",
+                                   "images/iso_latitude_rings.png"],
 }
 
 

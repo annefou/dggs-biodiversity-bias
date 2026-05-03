@@ -17,6 +17,7 @@ project:
     - file: notebooks/05_equal_area_comparison.ipynb
     - file: notebooks/06_hierarchical_indexing.ipynb
     - file: notebooks/07_multigrid_quercus_suber.ipynb
+    - file: notebooks/08_sphere_vs_ellipsoid.ipynb
 
 site:
   title: "dggs-biodiversity-bias"

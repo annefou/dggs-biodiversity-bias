@@ -260,6 +260,239 @@ plt.show()
 # the path that integrates with the Destination Earth Common Data
 # Model.
 #
-# **Section B (NESTED bit-shift) and Section C (iso-latitude) — to
-# follow.** Both are pure HEALPix-family properties that survive the
-# sphere → authalic mapping unchanged.
+# Both **Section B (NESTED bit-shift)** and **Section C (iso-latitude)**
+# below are pure HEALPix-family properties that survive the sphere →
+# authalic mapping unchanged.
+
+# %% [markdown]
+# ## Section B — NESTED bit-shift refinement: zoom-in / zoom-out is O(1)
+#
+# In HEALPix NESTED ordering the parent–child relationship is **pure
+# integer arithmetic**:
+#
+# ```
+# parent(pix)        = pix >> 2
+# children(pix, k)   = (pix << 2) | k    for k in {0, 1, 2, 3}
+# ```
+#
+# That means zoom in / zoom out — going between any two HEALPix
+# resolutions (`nside = N` and `nside = 2N`) — is **O(1) per cell**,
+# with no projection, no resampling, no hash lookup, no coordinate
+# conversion. For any tile-based or multi-resolution biodiversity
+# pipeline (Copernicus chunked Zarr × Destination Earth × GBIF stacks)
+# this property is what makes a HEALPix-keyed feature cube tractable
+# at scale.
+#
+# This section verifies the bit-shift relation against `healpy` and
+# discusses the implications.
+
+# %%
+import healpy as hp
+
+# Pick a cell at low resolution and compute its 4 children at
+# the next refinement level via bit-shift.
+PARENT_NSIDE = 8
+CHILD_NSIDE = 2 * PARENT_NSIDE  # 16
+
+parent_pix = 42
+children_via_bitshift = [(parent_pix << 2) | k for k in range(4)]
+parent_recovered = children_via_bitshift[0] >> 2
+
+print(f"Parent (nside={PARENT_NSIDE}, NESTED):  pix = {parent_pix} = {parent_pix:08b}")
+print(f"Children at nside={CHILD_NSIDE} via bit-shift:")
+for k, c in enumerate(children_via_bitshift):
+    print(f"  k={k}: pix = {c:>4} = {c:010b}")
+print(f"Recovering parent from any child via >> 2: {parent_recovered}")
+assert parent_recovered == parent_pix
+
+# %% [markdown]
+# ### Verifying via healpy: each child's centre is geographically
+# inside the parent.
+#
+# We get each child's centroid `(lat, lon)` from `hp.pix2ang(...,
+# nest=True)` and confirm that `hp.ang2pix(parent_nside, ...,
+# nest=True)` returns the parent. This is a tautology of NESTED
+# ordering but is worth demonstrating once.
+
+# %%
+# theta is colatitude, phi is longitude in radians
+child_thetas, child_phis = hp.pix2ang(
+    CHILD_NSIDE, np.array(children_via_bitshift), nest=True,
+)
+parent_check = hp.ang2pix(PARENT_NSIDE, child_thetas, child_phis, nest=True)
+print(f"hp.ang2pix(parent_nside, child_centres) = {parent_check.tolist()}")
+print(f"Expected parent_pix everywhere: {parent_pix}")
+assert all(p == parent_pix for p in parent_check)
+
+# %% [markdown]
+# ### Practical implication for biodiversity-EO stacks
+#
+# A pipeline that ingests Copernicus Zarr chunks at native HEALPix
+# resolution and downsamples them to a coarser analysis grid for
+# GBIF-aggregated species-distribution modelling does not need a
+# resampling step in the HEALPix-NESTED case. It is a chunk index
+# bit-shift. For every cell at coarse `nside`, the four (or sixteen,
+# or 4^k) tiles at fine `nside × 2^k` are known by integer arithmetic
+# alone — directly addressable in the chunked store.
+#
+# This is the algorithmic property that distinguishes HEALPix from
+# H3 and ISEA3H for tile-based / cloud-native analytics. H3 has
+# hierarchical refinement too, but its parent-child relation requires
+# a small lookup; ISEA3H's hierarchical addressing (Z3, Z7, etc.)
+# also works but is again not a single instruction. NESTED HEALPix
+# is `pix >> 2`. Nothing else.
+
+# %% [markdown]
+# ## Section C — Iso-latitude pixelization: zonal analyses are trivial
+#
+# In HEALPix every cell belongs to a "ring" of cells at the same
+# colatitude. The ring number is recoverable from the pixel index in
+# RING ordering directly; in NESTED ordering it is one healpy call
+# (`hp.pix2ang`) but the underlying property is the same:
+#
+# > **All HEALPix pixels in the same ring sit at exactly the same
+# > latitude.**
+#
+# This makes zonal analyses — climate-zone × biodiversity stats,
+# latitudinal phenology curves, latitudinal extinction-risk gradients
+# — almost free. No spatial query, no polygon clipping; just group
+# pixels by ring index.
+#
+# Hexagonal DGGS (H3, ISEA3H) do not have this property: cells on the
+# "same row" of a hex tessellation are at slightly different latitudes
+# because hexagons do not tile latitude bands. For latitude-banded
+# climate-biodiversity work this is a real, if subtle, advantage of
+# HEALPix.
+
+# %%
+NSIDE_RINGS = 16
+
+# Pick a ring at HEALPix nside=16 and confirm every pixel in the ring
+# has the same latitude.
+ring_idx = 12  # 0-indexed; ring 0 is at the north pole
+ring_pix = hp.query_strip(NSIDE_RINGS,
+                          theta1=0, theta2=np.pi,
+                          inclusive=False, nest=False)
+# query_strip returns all pixels in a colatitude range; for an
+# iso-latitude demonstration we use ring2pix-equivalent: use the fact
+# that in RING ordering, pixels are stored ring-by-ring. Equivalent:
+ring_pix_in_ring = []
+for pix_ring in range(hp.nside2npix(NSIDE_RINGS)):
+    th, _ = hp.pix2ang(NSIDE_RINGS, pix_ring, nest=False)
+    if abs(th - hp.pix2ang(NSIDE_RINGS, 12 * NSIDE_RINGS, nest=False)[0]) < 1e-10:
+        ring_pix_in_ring.append(pix_ring)
+
+# Convert back to NESTED indices for use elsewhere in the notebook
+ring_pix_nest = hp.ring2nest(NSIDE_RINGS, np.array(ring_pix_in_ring))
+
+# Confirm all pixels in the ring share the same colatitude
+ring_thetas, ring_phis = hp.pix2ang(NSIDE_RINGS,
+                                     np.array(ring_pix_in_ring),
+                                     nest=False)
+print(f"HEALPix nside={NSIDE_RINGS}: ring contains {len(ring_pix_in_ring)} pixels")
+print(f"Colatitude θ of all pixels in the ring: "
+      f"min={ring_thetas.min():.10f}, max={ring_thetas.max():.10f}")
+print(f"Latitude    of all pixels in the ring: "
+      f"{90.0 - np.degrees(ring_thetas[0]):.4f}°")
+assert np.allclose(ring_thetas, ring_thetas[0])
+
+# %% [markdown]
+# ### Visual: HEALPix iso-latitude rings vs H3 "rows"
+
+# %%
+import h3
+import cartopy.crs as ccrs
+
+fig = plt.figure(figsize=(13, 5.5))
+gs = fig.add_gridspec(1, 2, wspace=0.05)
+
+# -- Left: HEALPix rings -----------------------------------------
+ax_h = fig.add_subplot(gs[0, 0], projection=ccrs.Robinson())
+ax_h.set_global()
+ax_h.coastlines(linewidth=0.4, color="0.4")
+ax_h.gridlines(linewidth=0.3, color="0.7", alpha=0.5)
+
+NSIDE_VIS = 16
+NPIX_VIS = hp.nside2npix(NSIDE_VIS)
+all_thetas, all_phis = hp.pix2ang(NSIDE_VIS, np.arange(NPIX_VIS), nest=False)
+all_lats = 90.0 - np.degrees(all_thetas)
+all_lons = np.degrees(all_phis)
+all_lons = np.where(all_lons > 180, all_lons - 360, all_lons)
+
+# Colour pixels by ring index (= unique colatitude)
+unique_thetas = np.unique(np.round(all_thetas, 10))
+ring_id = np.searchsorted(unique_thetas, np.round(all_thetas, 10))
+
+ax_h.scatter(all_lons, all_lats, c=ring_id, cmap="viridis",
+             s=2.5, transform=ccrs.PlateCarree(), alpha=0.85)
+ax_h.set_title(
+    f"HEALPix nside={NSIDE_VIS}: every cell on a fixed colatitude ring\n"
+    f"(coloured by ring index — {len(unique_thetas)} rings, "
+    f"{NPIX_VIS:,} cells total)",
+    fontsize=10,
+)
+
+# -- Right: H3 cells, coloured by latitude band ------------------
+ax_3 = fig.add_subplot(gs[0, 1], projection=ccrs.Robinson())
+ax_3.set_global()
+ax_3.coastlines(linewidth=0.4, color="0.4")
+ax_3.gridlines(linewidth=0.3, color="0.7", alpha=0.5)
+
+H3_RES_VIS = 2
+h3_cells = h3.get_res0_cells()
+# Drill down to res 2 once
+h3_cells_res2 = []
+for c in h3_cells:
+    h3_cells_res2.extend(h3.cell_to_children(c, H3_RES_VIS))
+h3_lats = []
+h3_lons = []
+for c in h3_cells_res2:
+    lat, lon = h3.cell_to_latlng(c)
+    h3_lats.append(lat)
+    h3_lons.append(lon)
+h3_lats = np.array(h3_lats)
+h3_lons = np.array(h3_lons)
+
+# Colour by latitude band (10° bands) — to make the point that H3 cells
+# at the same "row" of a hexagonal tessellation are NOT at the same
+# latitude, so the colouring shows scattered transitions.
+band_idx = np.floor(h3_lats / 10).astype(int)
+ax_3.scatter(h3_lons, h3_lats, c=band_idx, cmap="viridis",
+             s=12, transform=ccrs.PlateCarree(), alpha=0.85)
+ax_3.set_title(
+    f"H3 res {H3_RES_VIS}: cells coloured by 10° latitude band\n"
+    "(no iso-latitude rings — hex tessellation breaks them)",
+    fontsize=10,
+)
+
+fig.suptitle(
+    "HEALPix iso-latitude rings vs H3 hexagonal tiling — "
+    "why HEALPix wins for zonal climate-biodiversity analyses",
+    fontsize=12, fontweight="bold", y=1.02,
+)
+
+plt.savefig("../images/iso_latitude_rings.png",
+            dpi=150, bbox_inches="tight")
+plt.show()
+
+# %% [markdown]
+# ## Wrapping up
+#
+# Three HEALPix-family properties surveyed in this notebook:
+#
+# 1. **Sphere ↔ ellipsoid mismatch is real** at climate-attribution
+#    precision (~0.7% systematic area bias at boreal latitudes). Use
+#    `rhealpixdggs` (PyPI) or the GRID4EARTH "Ellipsoidal HEALPix"
+#    approach (authalic-sphere mapping) to address it.
+# 2. **NESTED bit-shift refinement** makes zoom-in / zoom-out O(1) per
+#    cell. No projection, no resampling, no hash lookup. Critical for
+#    Copernicus Zarr × biodiversity tile pipelines.
+# 3. **Iso-latitude pixelization** makes zonal climate-biodiversity
+#    analyses essentially free — group pixels by ring, no spatial
+#    query needed.
+#
+# Together with the count-bias and shape-preservation arguments from
+# notebooks 02–07, these are the load-bearing reasons HEALPix
+# specifically (in any of its sphere or ellipsoid variants) is the
+# right common DGGS for climate-driven biodiversity science at the
+# precision the science requires.
