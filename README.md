@@ -1,13 +1,21 @@
 # dggs-biodiversity-bias
 
-> Why equal-area DGGS cells matter for climate-driven biodiversity science — and what makes HEALPix the right common DGGS at the precision climate-attribution work requires.
+> Why equal-area DGGS cells matter for climate-driven biodiversity science — and why HEALPix is the right common DGGS for the *integration* of biodiversity with high-resolution Copernicus EO and Destination Earth climate models.
 
 Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6). Eight reproducible notebooks make a layered argument:
 
 1. **Equal-area is necessary** *(notebooks 01–02)*. A regular lat-lon grid inflates biodiversity counts toward the equator by up to **23×** at 5° resolution. Mathematical property of the cells, not a sampling effect.
 2. **Any of six equal-area choices passes the count test** *(notebook 07)*. HEALPix, H3, rHEALPix, ISEA3H, Mollweide, and the EEA reference grid (LAEA Europe / EPSG:3035 — INSPIRE / Habitats Directive standard) all agree on biodiversity density patterns over *Quercus suber*'s Mediterranean range. Choosing between them is not a count-correctness question.
 3. **DGGS family preserves cell shape across latitudes; projection family does not** *(notebooks 03–04)*. Behrmann (aspect ≈ 5.0 at 65°N) and Mollweide distort poleward; EEA holds shape near its 52°N projection centre but distorts farther away. Every member of the DGGS family — HEALPix, H3, rHEALPix, ISEA3H — preserves compact cells at every latitude. **For ML pipelines stacking GBIF × Copernicus × ERA5 × MODIS into a single feature cube, this is what makes a CNN's receptive field mean the same geographic operator everywhere.**
-4. **HEALPix-specific advantages — why HEALPix is the load-bearing common DGGS for climate-driven biodiversity science** *(notebooks 06, 08)*. **NESTED bit-shift hierarchical refinement** (parent = `pix >> 2`, children = `pix << 2 | k`) makes zoom-in / zoom-out **O(1) per cell** — no projection, no resampling, no hash lookup. **Iso-latitude pixelization** makes zonal climate-zone analyses essentially free. A **credible ellipsoidally-correct path** via either rHEALPix (already pip-installable) or "Ellipsoidal HEALPix" via authalic-sphere mapping (the **GRID4EARTH (ESA)** approach) addresses the systematic ~0.7% area bias at boreal latitudes that HEALPix-on-sphere otherwise compounds across decades of stacked Copernicus × biodiversity data.
+4. **HEALPix is the right common DGGS for the *integration* future of biodiversity science** *(notebooks 06, 08)*. The case is not "HEALPix is uniquely best for biodiversity counts" — notebook 07 shows that any of six equal-area choices works. The case is that **biodiversity science is increasingly integrated with high-resolution Copernicus EO and Destination Earth climate models**, and on that integrated surface HEALPix has specific advantages the alternatives do not:
+   - **Geometric deep learning on the sphere** is built on HEALPix (DeepSphere, spherical CNNs, equivariant networks). H3 / ISEA3H / rHEALPix have nothing comparable.
+   - **Scattering networks for global EO data** — `foscat` (the FIESTA stack) operates on HEALPix natively.
+   - **Sphere-harmonic transforms** (`healpy.map2alm` / `alm2map`) are native and fast on HEALPix; absent on the other DGGS.
+   - **NESTED bit-shift hierarchical refinement** (parent = `pix >> 2`, children = `pix << 2 | k`) makes zoom-in / zoom-out **O(1) per cell** — no projection, no resampling, no hash lookup. Critical for tile-based Copernicus Zarr × biodiversity ML pipelines.
+   - **Iso-latitude pixelization** makes zonal climate-zone analyses (latitudinal extinction risk, climate-band biodiversity stats) essentially free.
+   - **A credible ellipsoidally-correct path** — via rHEALPix (already pip-installable) or "Ellipsoidal HEALPix" via the authalic-sphere mapping (the **ESA GRID4EARTH** approach) — addresses the systematic ~0.7% area bias at boreal latitudes that compounds in Copernicus×biodiversity stacks at high precision over decades.
+
+   For **biodiversity-only counts at coarse resolution** any equal-area DGGS works; HEALPix is competitive but not uniquely necessary. **For the integrated future where biodiversity, climate models, and high-resolution EO data share one common DGGS**, HEALPix is the right substrate — not because it is "best for biodiversity" but because the climate-model and spherical-ML sides already live on it, and integration cost dominates.
 
 ## Headline numbers
 

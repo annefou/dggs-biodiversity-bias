@@ -60,16 +60,26 @@
 # uses are spherical cell areas, not the area of the equivalent patch
 # on the WGS84 ellipsoid where the data actually lives.
 #
-# The error this introduces is **small in percentage terms** but
-# **systematic in latitude** and **compounding across cells and
-# decades** — exactly the regime where climate-biodiversity attribution
-# conclusions live or die. A 0.7% area bias at 65°N, multiplied by
-# millions of 1 km cells × decades of stacked Copernicus + biodiversity
-# data, is a real source of systematic bias in zonal density estimates,
-# range-shift attribution, and habitat-degradation reporting.
+# The error this introduces is **small** — at most ~0.9% per cell at
+# 85°N, smaller everywhere else. **For biodiversity counts in
+# isolation it is well below other sources of error** (GBIF sampling
+# effort variability, species-distribution-model uncertainty,
+# climate-model spread). The sphere version of HEALPix is fine for
+# straightforward biodiversity-occurrence aggregation at coarse
+# resolution.
+#
+# **Where this bias becomes material is the *integration* regime** —
+# the future where biodiversity data is stacked at high resolution
+# with Copernicus EO products and Destination Earth climate model
+# output on a single common DGGS. There the bias is systematic in
+# latitude, accumulates across products, and lives at precisions where
+# zonal trend detection actually operates. This is precisely the
+# regime that **ESA GRID4EARTH** identifies as requiring an
+# ellipsoidally-correct common DGGS for the Copernicus × Destination
+# Earth bridge.
 #
 # This section quantifies the mismatch and shows the two existing
-# paths that solve it.
+# paths that solve it for the integration regime.
 
 # %%
 import numpy as np
@@ -132,34 +142,37 @@ for lat in [0, 30, 45, 65, 70, 85]:
           f"{err_mean_pct[i]:>+12.4f} {err_authalic_pct[i]:>+16.4f}")
 
 # %% [markdown]
-# ### Why this matters for climate-driven biodiversity science
+# ### Where this matters — and where it doesn't
 #
-# The maximum percentage error is small (~0.45% at the equator,
+# The maximum percentage error is small (~+0.45% at the equator,
 # ~−0.88% at 85°N). At first glance this looks negligible compared to
 # the count bias of lat-lon (up to 23× at 5° resolution; notebook 02).
 #
-# But the **structure** of the error is what makes it a problem:
+# **For biodiversity counts at coarse resolution in isolation, it is
+# negligible.** It sits well below GBIF sampling-effort variability,
+# species-distribution-model uncertainty, and climate-model spread.
+# Sphere HEALPix is fine for typical biodiversity-occurrence
+# aggregation, range maps, and density estimates.
+#
+# **For the integration regime, the structure of the error matters:**
 #
 # 1. **Systematic, not random.** The error always has the same sign at
 #    a given latitude. It does not average out.
 # 2. **Latitude-dependent.** The error swings ~1.3 percentage points
 #    across the populated latitude range. Zonal comparisons (boreal
 #    vs temperate vs tropical) accumulate this swing as a bias.
-# 3. **Compounds across cells and decades.** A climate-impact
-#    attribution analysis that combines Copernicus EO products at
-#    1 km × decades of data stack contains O(10^9) cell-years of
-#    estimates. A 0.7% systematic bias on each is the difference
-#    between "detecting" and "missing" a climate-driven biodiversity
-#    signal at the threshold of statistical significance.
-# 4. **Compounds across products.** If GBIF occurrences are aggregated
-#    on HEALPix-on-sphere, ERA5 climate is aggregated on its native
-#    Gaussian grid then resampled, and Copernicus land cover is on
-#    yet another reference, the cross-product comparison inherits the
-#    union of all the per-product systematic errors.
+# 3. **Cross-product accumulation.** When biodiversity data is fused
+#    with Copernicus EO products and Destination Earth model output on
+#    a common grid, the per-product systematic biases compose. The
+#    integrated stack carries the union of the latitudinal biases.
+# 4. **Long-term trend detection.** A 0.7% systematic bias in zonal
+#    density estimates is on the same order as the per-decade trends
+#    that climate-driven range-shift attribution actually targets.
 #
-# This is precisely the regime that **GRID4EARTH (ESA)** identifies as
-# requiring a common, ellipsoidally-correct DGGS for the
-# Copernicus × Destination Earth integration.
+# This is the regime **ESA GRID4EARTH** identifies as requiring an
+# ellipsoidally-correct common DGGS for the Copernicus × Destination
+# Earth bridge — and biodiversity science integrated into that bridge
+# inherits the requirement.
 
 # %% [markdown]
 # ### The figure — sphere-vs-WGS84 area error vs latitude
@@ -480,19 +493,24 @@ plt.show()
 #
 # Three HEALPix-family properties surveyed in this notebook:
 #
-# 1. **Sphere ↔ ellipsoid mismatch is real** at climate-attribution
-#    precision (~0.7% systematic area bias at boreal latitudes). Use
-#    `rhealpixdggs` (PyPI) or the GRID4EARTH "Ellipsoidal HEALPix"
-#    approach (authalic-sphere mapping) to address it.
+# 1. **Sphere ↔ ellipsoid mismatch** (~0.7% systematic area bias at
+#    boreal latitudes) is **negligible for biodiversity counts in
+#    isolation** but **material for the Copernicus × Destination Earth
+#    integration regime** that ESA GRID4EARTH targets. Solutions:
+#    `rhealpixdggs` (PyPI) or "Ellipsoidal HEALPix" via authalic-sphere
+#    mapping (GRID4EARTH).
 # 2. **NESTED bit-shift refinement** makes zoom-in / zoom-out O(1) per
 #    cell. No projection, no resampling, no hash lookup. Critical for
 #    Copernicus Zarr × biodiversity tile pipelines.
-# 3. **Iso-latitude pixelization** makes zonal climate-biodiversity
-#    analyses essentially free — group pixels by ring, no spatial
-#    query needed.
+# 3. **Iso-latitude pixelization** makes zonal climate-zone analyses
+#    essentially free — group pixels by ring, no spatial query needed.
 #
-# Together with the count-bias and shape-preservation arguments from
-# notebooks 02–07, these are the load-bearing reasons HEALPix
-# specifically (in any of its sphere or ellipsoid variants) is the
-# right common DGGS for climate-driven biodiversity science at the
-# precision the science requires.
+# Together with the count-bias arguments (notebooks 01–02, 07) and the
+# shape-preservation arguments (notebooks 03–04), these are why HEALPix
+# is the right substrate **for the integrated future** where
+# biodiversity, high-resolution Copernicus EO, and Destination Earth
+# climate-model output share one common DGGS — *not* because HEALPix
+# is uniquely best for biodiversity counts in isolation, but because
+# the climate-model and spherical-ML sides already live on it and
+# integration cost dominates. For biodiversity-only work at coarse
+# resolution, any of the equal-area DGGS in notebook 07 works fine.
