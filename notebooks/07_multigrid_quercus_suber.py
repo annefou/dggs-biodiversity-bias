@@ -33,8 +33,9 @@
 #
 # - First commit: **lat-lon 1°**, **HEALPix nside=64**, **H3 res 3**
 # - Second commit: + **rHEALPix res 4** (equal-area projected HEALPix variant)
-# - This commit: + **Mollweide ~100 km cells** (equal-area pseudo-cylindrical projection — atlas practice)
-# - Follow-up: + EEA reference grid (LAEA Europe), ISEA3H (requires Docker)
+# - Third commit: + **Mollweide ~100 km cells** (equal-area pseudo-cylindrical projection — atlas practice)
+# - This commit: + **EEA reference grid 100 km cells** (LAEA Europe / EPSG:3035, INSPIRE / Habitats Directive standard)
+# - Follow-up: + ISEA3H (requires Docker container with DGGRID v8.41)
 #
 # ## Environment requirements
 #
@@ -242,6 +243,52 @@ print(f"Mollweide {MOLL_CELL_SIDE_KM:.0f} km cells: "
       f"each {moll_cell_area_km2:,.0f} km² (projected)")
 
 # %% [markdown]
+# ## Step 5d: Aggregate on the EEA reference grid (LAEA Europe / EPSG:3035)
+#
+# The EEA reference grid is the European Environment Agency's standard
+# grid system used by INSPIRE and the Habitats Directive for
+# biodiversity reporting across the EU. It is a regular grid in the
+# **Lambert Azimuthal Equal Area** projection centred at (10°E, 52°N)
+# with false easting 4,321,000 m and false northing 3,210,000 m
+# (EPSG:3035). Standard cell sizes are 1 km, 10 km, 25 km, and 100 km.
+#
+# We use 100 km cells here for resolution match with HEALPix nside=64.
+# Note: the EEA grid is **regional** — well-defined for Europe, where
+# Q. suber's Mediterranean range comfortably sits.
+
+# %%
+EEA_CELL_SIDE_KM = 100.0
+EEA_CELL_SIDE_M = EEA_CELL_SIDE_KM * 1000.0
+eea_cell_area_km2 = EEA_CELL_SIDE_KM ** 2
+
+eea_proj = ccrs.LambertAzimuthalEqualArea(
+    central_longitude=10.0, central_latitude=52.0,
+    false_easting=4_321_000.0, false_northing=3_210_000.0,
+)
+
+xy_eea_data = eea_proj.transform_points(ccrs.PlateCarree(), lons_r, lats_r)
+x_eea_data = xy_eea_data[:, 0]
+y_eea_data = xy_eea_data[:, 1]
+
+# Snap edges to multiples of cell side (matches the EEA reference grid origin)
+x_edges_eea = np.arange(
+    np.floor(x_eea_data.min() / EEA_CELL_SIDE_M) * EEA_CELL_SIDE_M,
+    np.ceil(x_eea_data.max() / EEA_CELL_SIDE_M) * EEA_CELL_SIDE_M + EEA_CELL_SIDE_M,
+    EEA_CELL_SIDE_M,
+)
+y_edges_eea = np.arange(
+    np.floor(y_eea_data.min() / EEA_CELL_SIDE_M) * EEA_CELL_SIDE_M,
+    np.ceil(y_eea_data.max() / EEA_CELL_SIDE_M) * EEA_CELL_SIDE_M + EEA_CELL_SIDE_M,
+    EEA_CELL_SIDE_M,
+)
+counts_eea, _, _ = np.histogram2d(
+    y_eea_data, x_eea_data, bins=[y_edges_eea, x_edges_eea],
+)
+print(f"EEA reference grid {EEA_CELL_SIDE_KM:.0f} km cells: "
+      f"{int(np.sum(counts_eea > 0)):,} occupied, "
+      f"each {eea_cell_area_km2:,.0f} km² (projected)")
+
+# %% [markdown]
 # ## Step 6: Build a common colour scale and rasterise each grid
 #
 # To compare the three grids fairly we render each on the same plotting
@@ -304,6 +351,25 @@ moll_density_masked = np.ma.masked_where(
     moll_field.reshape(plot_lat_g.shape) == 0, moll_density,
 )
 
+# EEA: project plot mesh to LAEA Europe and look up bin
+xy_plot_eea = eea_proj.transform_points(
+    ccrs.PlateCarree(), plot_lon_g.ravel(), plot_lat_g.ravel(),
+)
+ix_eea = np.digitize(xy_plot_eea[:, 0], x_edges_eea) - 1
+iy_eea = np.digitize(xy_plot_eea[:, 1], y_edges_eea) - 1
+in_bounds_eea = (
+    (ix_eea >= 0) & (ix_eea < counts_eea.shape[1])
+    & (iy_eea >= 0) & (iy_eea < counts_eea.shape[0])
+)
+ix_eea_clip = np.clip(ix_eea, 0, counts_eea.shape[1] - 1)
+iy_eea_clip = np.clip(iy_eea, 0, counts_eea.shape[0] - 1)
+eea_field = counts_eea[iy_eea_clip, ix_eea_clip].astype(float)
+eea_field[~in_bounds_eea] = 0
+eea_density = (eea_field / eea_cell_area_km2).reshape(plot_lat_g.shape)
+eea_density_masked = np.ma.masked_where(
+    eea_field.reshape(plot_lat_g.shape) == 0, eea_density,
+)
+
 # Lat-lon: already on its own grid
 density_latlon_masked = np.ma.masked_where(counts_latlon == 0, density_latlon)
 
@@ -313,14 +379,15 @@ shared_vmax = float(np.percentile(np.concatenate([
     h3_density_masked.compressed(),
     rhp_density_masked.compressed(),
     moll_density_masked.compressed(),
+    eea_density_masked.compressed(),
 ]), 98))
 
 # %% [markdown]
-# ## Step 7: Five-panel comparison
+# ## Step 7: Six-panel comparison
 #
-# Same data, five grids. The four equal-area grids (HEALPix, H3,
-# rHEALPix, Mollweide) should agree on the apparent density pattern.
-# The lat-lon panel is the cautionary case.
+# Same data, six grids. The five equal-area grids (HEALPix, H3,
+# rHEALPix, Mollweide, EEA) should agree on the apparent density
+# pattern. The lat-lon panel is the cautionary case.
 
 # %%
 fig = plt.figure(figsize=(20, 11))
@@ -337,6 +404,8 @@ panels = [
      rhp_density_masked, plot_lons, plot_lats, "centres"),
     (f"E. Mollweide {MOLL_CELL_SIDE_KM:.0f} km cells (equal-area projection)\nrecords / km²",
      moll_density_masked, plot_lons, plot_lats, "centres"),
+    (f"F. EEA reference grid {EEA_CELL_SIDE_KM:.0f} km cells (LAEA Europe / EPSG:3035)\nrecords / km²",
+     eea_density_masked, plot_lons, plot_lats, "centres"),
 ]
 
 for k, (title, data, x, y, kind) in enumerate(panels):
@@ -356,8 +425,8 @@ for k, (title, data, x, y, kind) in enumerate(panels):
                  label="Records per km²", shrink=0.9)
 
 fig.suptitle(
-    "Quercus suber GBIF — same data on five grids "
-    "(lat-lon vs HEALPix vs H3 vs rHEALPix vs Mollweide)",
+    "Quercus suber GBIF — same data on six grids "
+    "(lat-lon vs HEALPix vs H3 vs rHEALPix vs Mollweide vs EEA)",
     fontsize=14, fontweight="bold", y=1.00,
 )
 plt.savefig("../images/multigrid_quercus_suber.png", dpi=150,
@@ -367,21 +436,20 @@ plt.show()
 # %% [markdown]
 # ## Conclusion (this iteration)
 #
-# Four equal-area aggregation choices — HEALPix (exactly equal-area on
+# Five equal-area aggregation choices — HEALPix (exactly equal-area on
 # the sphere), H3 (~1.4% area variation, hexagonal, icosahedron-based),
 # rHEALPix (exactly equal-area on the WGS84 ellipsoid, projected
-# cube-based), and Mollweide (equal-area pseudo-cylindrical projection,
-# gridded in projected coordinates — the standard atlas practice) —
+# cube-based), Mollweide (equal-area pseudo-cylindrical projection,
+# gridded in projected coordinates), and the EEA reference grid (LAEA
+# Europe / EPSG:3035, the European biodiversity-reporting standard) —
 # produce visually similar density patterns over Q. suber's Mediterranean
 # range. Lat-lon shows the systematic equator-pole distortion notebook 02
 # already isolated.
 #
-# The remaining iterations of this notebook will add:
+# The remaining iteration of this notebook will add:
 #
-# - **EEA reference grid** — LAEA Europe (EPSG:3035), INSPIRE / Habitats
-#   Directive standard for European biodiversity reporting
 # - **ISEA3H** — the DGGS the Eco-ISEA3H paper advocates (requires the
 #   Docker container at ghcr.io/annefou/dggs-biodiversity-bias:main with
 #   DGGRID v8.41)
 #
-# Each addition produces another panel in the comparison figure.
+# That addition produces the seventh and final panel.
