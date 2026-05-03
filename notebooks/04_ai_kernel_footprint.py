@@ -199,13 +199,14 @@ def rhealpix_kernel(lat_c, lon_c, resolution=4):
     return result
 
 
-def isea3h_kernel(lat_c, lon_c, resolution=8, sample_radius_km=200):
+def isea3h_kernel(lat_c, lon_c, resolution=8, sample_radius_km=95):
     """ISEA3H cell at (lat_c, lon_c) + 1-ring of neighbours.
 
     Found by sampling ~36 points in a circle around the anchor and
     collecting the unique ISEA3H cells they fall into. At resolution 8
-    cells are ~88 km wide; a 200 km sampling radius reliably captures
-    the centre cell + its hexagonal 1-ring.
+    cells are ~88 km wide and neighbour centres are ~88 km away; a
+    ~95 km sampling radius captures the centre cell plus its 6
+    hexagonal 1-ring neighbours without bleeding into the 2-ring.
     """
     if _dggrid is None:
         raise RuntimeError(
