@@ -104,7 +104,7 @@ NSIDE = 16
 NPIX = hp.nside2npix(NSIDE)
 
 # Convert lat/lon to HEALPix pixel indices
-pixel_indices = hp.ang2pix(NSIDE, theta, phi)
+pixel_indices = hp.ang2pix(NSIDE, theta, phi, nest=True)
 
 # Count occurrences per pixel
 counts_healpix = np.bincount(pixel_indices, minlength=NPIX)
@@ -142,7 +142,7 @@ axes[0].axhline(N_POINTS / counts_regular.size, color="black", linestyle="--",
 axes[0].legend()
 
 # HEALPix: mean raw count per latitude band
-healpix_thetas, _ = hp.pix2ang(NSIDE, np.arange(NPIX))
+healpix_thetas, _ = hp.pix2ang(NSIDE, np.arange(NPIX), nest=True)
 healpix_lats = 90.0 - np.degrees(healpix_thetas)
 
 lat_band_edges = np.arange(-90, 95, 5)
@@ -233,7 +233,7 @@ plt.colorbar(im0, ax=axes[0], orientation="horizontal", pad=0.05,
 
 # HEALPix map
 # Use healpy mollview to create the map data, then plot manually
-hp.mollview(counts_healpix, title="", hold=False, fig=None, nest=False)
+hp.mollview(counts_healpix, title="", hold=False, fig=None, nest=True)
 plt.close()  # close healpy's figure
 
 # Plot HEALPix as a projected map using cartopy
@@ -247,7 +247,7 @@ plot_lon_grid, plot_lat_grid = np.meshgrid(plot_lons, plot_lats)
 # Convert lat/lon to HEALPix indices
 plot_theta = np.radians(90.0 - plot_lat_grid)
 plot_phi = np.radians(plot_lon_grid % 360)
-plot_pix = hp.ang2pix(nside_plot, plot_theta, plot_phi)
+plot_pix = hp.ang2pix(nside_plot, plot_theta, plot_phi, nest=True)
 healpix_map = counts_healpix[plot_pix]
 
 im1 = axes[1].pcolormesh(

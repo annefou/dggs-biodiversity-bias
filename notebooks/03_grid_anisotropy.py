@@ -121,9 +121,9 @@ def healpix_cell_vertices(lat_c, lon_c, nside=16, n_edge=20):
     """HEALPix cell whose centre is closest to (lat_c, lon_c)."""
     theta = (90.0 - lat_c) * DEG
     phi = (lon_c % 360) * DEG
-    pix = hp.ang2pix(nside, theta, phi)
+    pix = hp.ang2pix(nside, theta, phi, nest=True)
     # boundaries() returns 3xN cartesian; convert to lat/lon
-    xyz = hp.boundaries(nside, pix, step=n_edge)  # (3, 4*n_edge)
+    xyz = hp.boundaries(nside, pix, step=n_edge, nest=True)  # (3, 4*n_edge)
     x, y, z = xyz
     cell_lat = 90.0 - np.degrees(np.arccos(z))
     cell_lon = np.degrees(np.arctan2(y, x))

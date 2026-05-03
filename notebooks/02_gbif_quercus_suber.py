@@ -191,7 +191,7 @@ NPIX = hp.nside2npix(NSIDE)
 
 theta = np.radians(90.0 - lats_r)
 phi = np.radians(lons_r % 360)
-pix = hp.ang2pix(NSIDE, theta, phi)
+pix = hp.ang2pix(NSIDE, theta, phi, nest=True)
 counts_healpix = np.bincount(pix, minlength=NPIX)
 
 healpix_cell_area = 4 * np.pi * R**2 / NPIX
@@ -250,7 +250,7 @@ plot_lats = np.linspace(LAT_MIN, LAT_MAX, 300)
 plot_lon_grid, plot_lat_grid = np.meshgrid(plot_lons, plot_lats)
 plot_theta = np.radians(90.0 - plot_lat_grid)
 plot_phi = np.radians(plot_lon_grid % 360)
-plot_pix = hp.ang2pix(NSIDE, plot_theta, plot_phi)
+plot_pix = hp.ang2pix(NSIDE, plot_theta, plot_phi, nest=True)
 healpix_field = counts_healpix[plot_pix].astype(float)
 healpix_masked = np.ma.masked_where(healpix_field == 0, healpix_field)
 # Equal-area HEALPix counts already represent density up to a constant;

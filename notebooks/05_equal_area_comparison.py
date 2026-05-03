@@ -132,7 +132,7 @@ print(f"Behrmann grid: {counts_behrmann.shape}, total {int(counts_behrmann.sum()
 # %%
 NSIDE = 16
 NPIX = hp.nside2npix(NSIDE)
-pix = hp.ang2pix(NSIDE, theta, phi)
+pix = hp.ang2pix(NSIDE, theta, phi, nest=True)
 counts_healpix = np.bincount(pix, minlength=NPIX)
 print(f"HEALPix grid: nside={NSIDE}, NPIX={NPIX}")
 print(f"  mean count/cell: {counts_healpix.mean():.1f}")
@@ -170,7 +170,7 @@ field_behrmann = counts_behrmann[i_y, i_x]
 # HEALPix raster
 plot_theta = np.radians(90.0 - LAT)
 plot_phi = np.radians(LON % 360)
-plot_pix = hp.ang2pix(NSIDE, plot_theta, plot_phi)
+plot_pix = hp.ang2pix(NSIDE, plot_theta, plot_phi, nest=True)
 field_healpix = counts_healpix[plot_pix]
 
 # Shared colour scale: cap at the lat-lon equator-band peak so the

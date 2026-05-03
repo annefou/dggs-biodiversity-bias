@@ -135,12 +135,12 @@ def healpix_3x3_window(lat_c, lon_c, nside):
     """
     theta_c = (90.0 - lat_c) * DEG
     phi_c = (lon_c % 360) * DEG
-    centre_pix = hp.ang2pix(nside, theta_c, phi_c)
-    neighbours = hp.get_all_neighbours(nside, theta_c, phi_c)
+    centre_pix = hp.ang2pix(nside, theta_c, phi_c, nest=True)
+    neighbours = hp.get_all_neighbours(nside, theta_c, phi_c, nest=True)
     pixels = [centre_pix] + [int(p) for p in neighbours if p >= 0]
     cells = []
     for pix in pixels:
-        xyz = hp.boundaries(nside, pix, step=8)
+        xyz = hp.boundaries(nside, pix, step=8, nest=True)
         x, y, z = xyz
         lats = 90.0 - np.degrees(np.arccos(z))
         lons = np.degrees(np.arctan2(y, x))

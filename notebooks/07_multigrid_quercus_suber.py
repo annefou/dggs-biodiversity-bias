@@ -156,7 +156,7 @@ HEALPIX_CELL_AREA = 4 * np.pi * R_KM**2 / NPIX
 
 theta = np.radians(90.0 - lats_r)
 phi = np.radians(lons_r % 360)
-pix = hp.ang2pix(NSIDE, theta, phi)
+pix = hp.ang2pix(NSIDE, theta, phi, nest=True)
 counts_healpix = np.bincount(pix, minlength=NPIX)
 print(f"HEALPix nside={NSIDE}: {NPIX:,} cells globally, "
       f"each {HEALPIX_CELL_AREA:,.0f} km²; "
@@ -370,7 +370,7 @@ plot_lon_g, plot_lat_g = np.meshgrid(plot_lons, plot_lats)
 # HEALPix: lookup pix per plot pixel
 plot_theta = np.radians(90.0 - plot_lat_g)
 plot_phi = np.radians(plot_lon_g % 360)
-plot_pix = hp.ang2pix(NSIDE, plot_theta, plot_phi)
+plot_pix = hp.ang2pix(NSIDE, plot_theta, plot_phi, nest=True)
 healpix_field = counts_healpix[plot_pix].astype(float)
 healpix_density = healpix_field / HEALPIX_CELL_AREA
 healpix_density_masked = np.ma.masked_where(healpix_field == 0, healpix_density)
