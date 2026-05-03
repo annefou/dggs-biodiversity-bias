@@ -8,7 +8,7 @@ Global biodiversity analyses must combine data from many sources onto a common g
 
 ## What this Jupyter Book contains
 
-Six notebooks, each one a single, focused piece of evidence:
+Seven notebooks, each one a single, focused piece of evidence:
 
 1. **{doc}`Synthetic proof <notebooks/01_synthetic_proof>`** — 1,000,000 uniform random points on the sphere binned on a 5° lat-lon grid versus HEALPix. The lat-lon panel develops a fake equator-pole gradient; HEALPix is uniform. The artefact is mathematical, not statistical.
 
@@ -21,6 +21,8 @@ Six notebooks, each one a single, focused piece of evidence:
 5. **{doc}`Three-grid comparison <notebooks/05_equal_area_comparison>`** — lat-lon vs Behrmann vs HEALPix on the same 1 M uniform points. Behrmann and HEALPix are both uniform; the count bias is a solved problem under any equal-area scheme.
 
 6. **{doc}`Hierarchical indexing <notebooks/06_hierarchical_indexing>`** — a single HEALPix NESTED parent cell (nside=8), exactly tiled by 16 children (nside=32) and 256 descendants (nside=128), drawn over Scandinavia. Refinement is a deterministic bit-shift on the cell index — no projection, no interpolation, no resampling.
+
+7. **{doc}`Comprehensive multi-grid comparison <notebooks/07_multigrid_quercus_suber>`** — same Q. suber GBIF data on **seven grids**: lat-lon (cautionary), HEALPix nside=64, H3 res 3, rHEALPix res 4, Mollweide ~100 km, the **EEA reference grid** (LAEA Europe / EPSG:3035 — the INSPIRE / Habitats Directive standard for European biodiversity reporting), and **ISEA3H res 8** (the system the Eco-ISEA3H paper advocates). All six equal-area choices agree on the apparent density pattern; lat-lon is the only one that distorts. Establishes that equal-area is the load-bearing property — what notebooks 03–06 then add is the case for HEALPix specifically (compact shape *across all latitudes* and AI-ready hierarchical refinement, properties that distinguish DGGS from projection-based equal-area grids).
 
 ## How to use this material
 

@@ -2,7 +2,7 @@
 
 > Why equal-area cells matter for biodiversity — and why DGGS adds shape and hierarchy that equal-area projections do not.
 
-Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6). Six reproducible notebooks make a single argument:
+Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6). Seven reproducible notebooks make a single argument:
 
 - **Equal-area is necessary.** A regular lat-lon grid inflates biodiversity counts toward the equator by up to **23×** at 5° resolution, purely from grid geometry. This is a mathematical property of the cells, not a sampling effect.
 - **Equal-area is not sufficient for AI-ready data.** Behrmann and Mollweide projections fix the count bias but at high latitudes their cells become tall thin strips (aspect ratio ≈ 5 at 65°N for a 1° equator cell). A 3×3 ML kernel covers wildly different physical neighbourhoods at different latitudes; feature vectors stop meaning the same thing across a stacked feature cube.
@@ -28,6 +28,7 @@ All notebooks live in `notebooks/` as jupytext `.py` (committed) with `.ipynb` p
 | 04 | `04_ai_kernel_footprint.py` | What an ML 3×3 kernel sees at 65°N, 15°E (Scandinavia) on three grids. The AI-readiness argument. |
 | 05 | `05_equal_area_comparison.py` | 3-panel synthetic comparison: lat-lon vs Behrmann vs HEALPix on the same uniform data. Establishes that Behrmann and HEALPix both pass the count test. |
 | 06 | `06_hierarchical_indexing.py` | One panel showing HEALPix NESTED refinement: parent cell at nside=8 → 16 children at nside=32 → 256 descendants at nside=128, exactly nested. |
+| 07 | `07_multigrid_quercus_suber.py` | Comprehensive comparison of *Q. suber* density on **seven grids**: lat-lon (cautionary baseline), HEALPix nside=64 (DGGS, sphere), H3 res 3 (hexagonal DGGS), rHEALPix res 4 (DGGS, WGS84 ellipsoid), Mollweide ~100 km (equal-area projection), EEA reference grid 100 km (LAEA Europe / EPSG:3035, INSPIRE / Habitats Directive standard), and ISEA3H res 8 (the system the Eco-ISEA3H paper advocates). Confirms that **all six equal-area choices agree** on the apparent density pattern; lat-lon is the only one that distorts. |
 
 ## How to reproduce
 

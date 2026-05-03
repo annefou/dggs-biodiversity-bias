@@ -16,6 +16,7 @@ project:
     - file: notebooks/04_ai_kernel_footprint.ipynb
     - file: notebooks/05_equal_area_comparison.ipynb
     - file: notebooks/06_hierarchical_indexing.ipynb
+    - file: notebooks/07_multigrid_quercus_suber.ipynb
 
 site:
   title: "dggs-biodiversity-bias"
