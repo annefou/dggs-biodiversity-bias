@@ -1,20 +1,49 @@
 # dggs-biodiversity-bias
 
-> Why equal-area cells matter for biodiversity — and why DGGS adds shape and hierarchy that equal-area projections do not.
+> Why equal-area DGGS cells matter for climate-driven biodiversity science — and what makes HEALPix the right common DGGS at the precision climate-attribution work requires.
 
-Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6). Seven reproducible notebooks make a single argument:
+Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6). Eight reproducible notebooks make a layered argument:
 
-- **Equal-area is necessary.** A regular lat-lon grid inflates biodiversity counts toward the equator by up to **23×** at 5° resolution, purely from grid geometry. This is a mathematical property of the cells, not a sampling effect.
-- **Equal-area is not sufficient for AI-ready data.** Behrmann and Mollweide projections fix the count bias but at high latitudes their cells become tall thin strips (aspect ratio ≈ 5 at 65°N for a 1° equator cell). A 3×3 ML kernel covers wildly different physical neighbourhoods at different latitudes; feature vectors stop meaning the same thing across a stacked feature cube.
-- **HEALPix preserves both.** Equal-area cells *and* compact, hierarchically refinable shape *and* a NESTED quadtree where refinement is a deterministic bit-shift on the cell index — no projection, no resampling.
+1. **Equal-area is necessary** *(notebooks 01–02)*. A regular lat-lon grid inflates biodiversity counts toward the equator by up to **23×** at 5° resolution. Mathematical property of the cells, not a sampling effect.
+2. **Any of six equal-area choices passes the count test** *(notebook 07)*. HEALPix, H3, rHEALPix, ISEA3H, Mollweide, and the EEA reference grid (LAEA Europe / EPSG:3035 — INSPIRE / Habitats Directive standard) all agree on biodiversity density patterns over *Quercus suber*'s Mediterranean range. Choosing between them is not a count-correctness question.
+3. **DGGS family preserves cell shape across latitudes; projection family does not** *(notebooks 03–04)*. Behrmann (aspect ≈ 5.0 at 65°N) and Mollweide distort poleward; EEA holds shape near its 52°N projection centre but distorts farther away. Every member of the DGGS family — HEALPix, H3, rHEALPix, ISEA3H — preserves compact cells at every latitude. **For ML pipelines stacking GBIF × Copernicus × ERA5 × MODIS into a single feature cube, this is what makes a CNN's receptive field mean the same geographic operator everywhere.**
+4. **HEALPix-specific advantages — why HEALPix is the load-bearing common DGGS for climate-driven biodiversity science** *(notebooks 06, 08)*. **NESTED bit-shift hierarchical refinement** (parent = `pix >> 2`, children = `pix << 2 | k`) makes zoom-in / zoom-out **O(1) per cell** — no projection, no resampling, no hash lookup. **Iso-latitude pixelization** makes zonal climate-zone analyses essentially free. A **credible ellipsoidally-correct path** via either rHEALPix (already pip-installable) or "Ellipsoidal HEALPix" via authalic-sphere mapping (the **GRID4EARTH (ESA)** approach) addresses the systematic ~0.7% area bias at boreal latitudes that HEALPix-on-sphere otherwise compounds across decades of stacked Copernicus × biodiversity data.
 
 ## Headline numbers
 
-| Resolution | Lat-lon equator (5°) | Lat-lon at 85° | Behrmann at 65°N (3×3) | HEALPix at 65°N (3×3) |
-|---|---|---|---|---|
-| Cell area | ~615 ·10³ km² | ~27 ·10³ km² | constant | constant |
-| Mean count per cell (1 M points) | ~606 | ~26 (**23× bias**) | uniform | uniform |
-| 3×3 kernel aspect ratio | 2.2 | n/a | **5.0** | **1.3** |
+**Step 1 — count bias of lat-lon (notebook 01–02):** at 5° resolution a 1 M-point uniform random distribution shows **23× more "occurrences per cell"** at the equator than at 85°N — purely from cell-area geometry, no biology.
+
+**Step 3 — 3×3 ML-kernel aspect ratio at 65°N, 15°E (notebook 04):**
+
+| Grid | Aspect ratio | Tier |
+|---|---|---|
+| Behrmann (equal-area projection) | **5.0** | Tier 2 (projection) |
+| Mollweide 100 km | 1.3 | Tier 2 |
+| Lat-lon 1° | 1.2 | Tier 1 (cautionary) |
+| EEA reference grid 100 km | 1.0 | Tier 2 (azimuthal — preserves shape near 52°N centre) |
+| rHEALPix res 4 | 1.2 | Tier 3 (DGGS) |
+| HEALPix nside=64 | 1.3 | Tier 3 |
+| H3 res 3 | 1.0 | Tier 3 |
+| ISEA3H res 8 | 1.2 | Tier 3 |
+
+**Step 4 — sphere-vs-WGS84 systematic area error (notebook 08):**
+
+| Latitude | (HEALPix-on-sphere − WGS84) / WGS84 |
+|---|---|
+| 0°N | +0.45% |
+| 30°N | +0.11% |
+| 45°N | −0.22% |
+| 65°N | **−0.65%** |
+| 70°N | −0.73% |
+| 85°N | −0.88% |
+
+Total swing ~1.3 percentage points across populated latitudes — small per-cell, **systematic and compounding** across millions of 1 km cells × decades of climate-attribution data.
+
+## Why this matters for climate-driven biodiversity science
+
+The biodiversity work that informs conservation policy is not casual species-list aggregation. It is **climate-driven range-shift attribution, restoration outcome monitoring, Habitats Directive zonal reporting** — work where a 0.7% systematic bias compounds across cells × decades into real attribution errors. At that precision the choice of DGGS is a scientific-correctness issue, not an aesthetic one.
+
+This repository connects to the **ESA GRID4EARTH** initiative ([Ellipsoidal HEALPix as a Common DGGS for Copernicus EO and Destination Earth](https://www.grid4earth.eu)) — the broader programme of building one ellipsoidally-correct, hierarchical, scalable DGGS for the European Earth-system data ecosystem. The argument made in this Jupyter Book is the biodiversity-side version of GRID4EARTH's case.
 
 ## Notebooks
 
@@ -29,6 +58,7 @@ All notebooks live in `notebooks/` as jupytext `.py` (committed) with `.ipynb` p
 | 05 | `05_equal_area_comparison.py` | 3-panel synthetic comparison: lat-lon vs Behrmann vs HEALPix on the same uniform data. Establishes that Behrmann and HEALPix both pass the count test. |
 | 06 | `06_hierarchical_indexing.py` | One panel showing HEALPix NESTED refinement: parent cell at nside=8 → 16 children at nside=32 → 256 descendants at nside=128, exactly nested. |
 | 07 | `07_multigrid_quercus_suber.py` | Comprehensive comparison of *Q. suber* density on **seven grids**: lat-lon (cautionary baseline), HEALPix nside=64 (DGGS, sphere), H3 res 3 (hexagonal DGGS), rHEALPix res 4 (DGGS, WGS84 ellipsoid), Mollweide ~100 km (equal-area projection), EEA reference grid 100 km (LAEA Europe / EPSG:3035, INSPIRE / Habitats Directive standard), and ISEA3H res 8 (the system the Eco-ISEA3H paper advocates). Confirms that **all six equal-area choices agree** on the apparent density pattern; lat-lon is the only one that distorts. |
+| 08 | `08_sphere_vs_ellipsoid.py` | **HEALPix-specific advantages and refinements.** Section A: HEALPix-on-sphere vs HEALPix-on-WGS84 systematic area error (~0.7% at boreal latitudes); rHEALPix and "Ellipsoidal HEALPix" via authalic-sphere (GRID4EARTH) as the two solutions. Section B: NESTED bit-shift hierarchical refinement — `parent = pix >> 2`, `children = pix << 2 \| k`, verified against `healpy.pix2ang`/`ang2pix`. Section C: iso-latitude pixelization — every HEALPix ring sits at exactly one latitude, making zonal climate-biodiversity analyses essentially free; visual contrast against H3 hex tessellation. |
 
 ## How to reproduce
 

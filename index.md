@@ -1,14 +1,21 @@
-# Equal-area cells matter for biodiversity
+# A common DGGS for climate-driven biodiversity science
 
 Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6, 3–8 May 2026, Vienna).
 
-## The argument in one paragraph
+## The argument, in four steps
 
-Global biodiversity analyses must combine data from many sources onto a common grid before any model — statistical or machine-learned — can use them. The grid we choose is not a visualisation choice; it is a statistical one. A regular latitude-longitude grid systematically over-counts biodiversity at low latitudes and under-counts it at high latitudes, by up to a factor of 23 at 5° resolution, purely because grid cells shrink poleward. **Equal-area** projections (Behrmann, Mollweide) — the recognised standard for global biodiversity maps — solve that count bias. But for AI-ready, multi-resolution, cloud-native pipelines, equal-area is necessary and not sufficient: at high latitudes a Behrmann cell becomes a tall thin strip, and a 3×3 ML kernel covers a wildly different physical neighbourhood than at the equator. The same cell index stops meaning the same place across stacked feature layers — a quiet failure mode in models trained on heterogeneous biodiversity stacks. Discrete Global Grid Systems (HEALPix in particular) preserve equal area *and* compact cell shape *and* a deterministic hierarchical refinement.
+Global biodiversity analyses must combine GBIF occurrences, ERA5 climate, Copernicus land cover, and Destination Earth model output onto a **single common grid** before any statistical or machine-learned model can use them. The grid choice is not a visualisation question — it is a scientific-correctness question, especially for **climate-driven range-shift attribution, restoration outcome monitoring, and Habitats Directive zonal reporting**, where small systematic biases compound across millions of cells × decades into real attribution errors.
+
+The argument the eight notebooks make:
+
+1. **Equal-area is necessary.** Regular latitude-longitude grids systematically over-count biodiversity at low latitudes and under-count it at high latitudes, by up to a factor of **23×** at 5° resolution — purely because lat-lon cells shrink poleward. Mathematical property of the cells, not a sampling effect (notebooks 01–02).
+2. **Any of six equal-area choices passes the count test.** Notebook 07 compares HEALPix, H3, rHEALPix, ISEA3H, Mollweide, and the EEA reference grid (LAEA Europe / EPSG:3035) on the same 20,100-record GBIF *Quercus suber* dataset. All six agree on the apparent density pattern. **Choosing between them is not a count-correctness question.**
+3. **DGGS family preserves cell shape across latitudes; projection family does not.** Notebooks 03–04 show that Behrmann (cylindrical equal-area) at 65°N produces 3×3 ML kernels with **aspect ratio 5.0** — vertical strips that span multiple biomes north-south while compressing the east-west signal. Mollweide and EEA distort more gently but distort. The DGGS family — HEALPix, H3, rHEALPix, ISEA3H — all preserve compact (~aspect-1) cells everywhere. **For ML pipelines that stack features into a single cube, this is what makes a CNN's receptive field mean the same geographic operator everywhere on Earth.**
+4. **HEALPix specifically is the load-bearing common DGGS for climate-driven biodiversity science**, by virtue of three additional properties (notebooks 06, 08): **NESTED bit-shift hierarchical refinement** makes zoom-in / zoom-out *O(1)* per cell, with no projection or resampling — critical for Copernicus Zarr × biodiversity tile pipelines. **Iso-latitude pixelization** makes zonal climate-zone analyses essentially free. **A credible ellipsoidally-correct path** — via either rHEALPix (already pip-installable, equal-area on WGS84) or "Ellipsoidal HEALPix" via the authalic-sphere mapping (the **ESA GRID4EARTH** approach) — addresses the systematic ~0.7% area bias at boreal latitudes that HEALPix-on-sphere otherwise compounds across decades of stacked Copernicus × biodiversity data.
 
 ## What this Jupyter Book contains
 
-Seven notebooks, each one a single, focused piece of evidence:
+Eight notebooks, each one a single, focused piece of evidence:
 
 1. **{doc}`Synthetic proof <notebooks/01_synthetic_proof>`** — 1,000,000 uniform random points on the sphere binned on a 5° lat-lon grid versus HEALPix. The lat-lon panel develops a fake equator-pole gradient; HEALPix is uniform. The artefact is mathematical, not statistical.
 
@@ -22,13 +29,22 @@ Seven notebooks, each one a single, focused piece of evidence:
 
 6. **{doc}`Hierarchical indexing <notebooks/06_hierarchical_indexing>`** — a single HEALPix NESTED parent cell (nside=8), exactly tiled by 16 children (nside=32) and 256 descendants (nside=128), drawn over Scandinavia. Refinement is a deterministic bit-shift on the cell index — no projection, no interpolation, no resampling.
 
-7. **{doc}`Comprehensive multi-grid comparison <notebooks/07_multigrid_quercus_suber>`** — same Q. suber GBIF data on **seven grids**: lat-lon (cautionary), HEALPix nside=64, H3 res 3, rHEALPix res 4, Mollweide ~100 km, the **EEA reference grid** (LAEA Europe / EPSG:3035 — the INSPIRE / Habitats Directive standard for European biodiversity reporting), and **ISEA3H res 8** (the system the Eco-ISEA3H paper advocates). All six equal-area choices agree on the apparent density pattern; lat-lon is the only one that distorts. Establishes that equal-area is the load-bearing property — what notebooks 03–06 then add is the case for HEALPix specifically (compact shape *across all latitudes* and AI-ready hierarchical refinement, properties that distinguish DGGS from projection-based equal-area grids).
+7. **{doc}`Comprehensive multi-grid comparison <notebooks/07_multigrid_quercus_suber>`** — same *Quercus suber* GBIF data on **seven grids**: lat-lon (cautionary), HEALPix nside=64, H3 res 3, rHEALPix res 4, Mollweide ~100 km, the **EEA reference grid** (LAEA Europe / EPSG:3035 — the INSPIRE / Habitats Directive standard for European biodiversity reporting), and **ISEA3H res 8** (the system the Eco-ISEA3H paper advocates). All six equal-area choices agree on the apparent density pattern; lat-lon is the only one that distorts. Establishes that equal-area is the load-bearing property — what notebooks 03–06 and 08 then add is the case for HEALPix specifically.
+
+8. **{doc}`HEALPix-specific advantages and refinements <notebooks/08_sphere_vs_ellipsoid>`** — three HEALPix-family properties that make it the right common DGGS for climate-driven biodiversity science:
+   - **Section A — Sphere vs WGS84 ellipsoid.** HEALPix is on the sphere; biodiversity occurrences and Copernicus EO products are on WGS84. The mismatch is ~0.7% systematic area error at boreal latitudes — small per-cell, **systematic and compounding** across millions of 1 km cells × decades of climate-attribution data. Two solutions: rHEALPix (already used in notebook 07) and "Ellipsoidal HEALPix" via authalic-sphere mapping (the **ESA GRID4EARTH** approach).
+   - **Section B — NESTED bit-shift refinement.** Parent and children of any HEALPix cell are pure integer arithmetic (`parent = pix >> 2`, `children = pix << 2 | k`). Zoom in / zoom out is **O(1) per cell**, no projection, no resampling — critical for Copernicus Zarr × biodiversity tile pipelines.
+   - **Section C — Iso-latitude pixelization.** Every HEALPix cell sits on a fixed-colatitude ring; zonal climate-zone analyses are essentially free. H3 hex tessellation breaks this property.
 
 ## How to use this material
 
 The notebooks are designed to be read in order, but each one is self-contained: you can drop into any single notebook and it will run on its own. Notebook 02 downloads ~440 KB of GBIF data on first run (15–20 minutes due to GBIF API throttling); subsequent runs read the cache. All other notebooks are pure synthetic.
 
 To run everything end-to-end, see the README — `snakemake --cores 1 all` reproduces every figure.
+
+## Connection to ESA GRID4EARTH
+
+This Jupyter Book is the biodiversity-side version of the case the **ESA GRID4EARTH** initiative makes for **Ellipsoidal HEALPix as a Common DGGS** ([grid4earth.eu](https://www.grid4earth.eu)) — bridging spherical climate models (Destination Earth) and ellipsoidal Earth-observation data (Copernicus) on a single ellipsoidally-correct, hierarchical, scalable DGGS. Notebook 08 Section A makes the biodiversity-precision argument for that bridge.
 
 ## Citation
 
