@@ -47,6 +47,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import geopandas as gpd
 import h3
+import healpix_geo.nested as hgn
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -166,6 +167,36 @@ def healpix_3x3_window(lat_c, lon_c, nside):
         lats = 90.0 - np.degrees(np.arccos(z))
         lons = np.degrees(np.arctan2(y, x))
         cells.append((lats, lons))
+    return cells
+
+
+def healpix_geo_wgs84_kernel(lat_c, lon_c, depth=6):
+    """HEALPix-on-WGS84 cell + 1-ring of neighbours via healpix-geo.
+
+    `healpix-geo` is the package implementing the GRID4EARTH approach:
+    HEALPix indexing with cell vertices computed on the WGS84 ellipsoid
+    via authalic-sphere mapping. Cell area is exactly equal-area on
+    Earth's actual oblate shape. depth=6 is equivalent to nside=64
+    (nside = 2^depth). Returns the same 9-cell window pattern as
+    HEALPix-on-sphere — the visual is nearly identical at this
+    resolution but the cells are now WGS84-equal-area.
+    """
+    centre_pix = hgn.lonlat_to_healpix(
+        np.array([float(lon_c)]), np.array([float(lat_c)]),
+        depth=depth, ellipsoid="WGS84",
+    )
+    # 1-ring (k=1) returns a (1, 9) array: centre + 8 neighbours
+    neigh = hgn.kth_neighbourhood(centre_pix, depth=depth, ring=1)
+    pixels = neigh.flatten()
+    pixels = pixels[pixels != np.iinfo(np.uint64).max]  # drop sentinels
+    lons_v, lats_v = hgn.vertices(
+        pixels.astype(np.uint64), depth=depth, ellipsoid="WGS84",
+    )
+    cells = []
+    for i in range(len(pixels)):
+        lat_seq = lats_v[i]
+        lon_seq = lons_v[i]
+        cells.append((np.asarray(lat_seq), np.asarray(lon_seq)))
     return cells
 
 
@@ -349,35 +380,45 @@ display_proj = ccrs.LambertAzimuthalEqualArea(
     central_latitude=ANCHOR_LAT, central_longitude=ANCHOR_LON
 )
 
-# Two tiers, four panels each.
-# Tier (a) — projection family: equal-area projections gridded in
-# projected space. Lat-lon is included as the cautionary baseline since
-# it is also a "rectilinear in projected/parametric space" choice.
-# Tier (b) — DGGS family: cells live directly on the sphere or
-# ellipsoid with no projection step.
-projection_family = [
+# Three rows, three panels each.
+# Row 0 — projection family (Tier 1+2): rectilinear in projected/parametric
+#   space (lat-lon, Behrmann, Mollweide).
+# Row 1 — Tier 2 European regulatory standard + the two HEALPix variants
+#   (sphere vs WGS84-via-healpix-geo). The HEALPix-geo panel is the
+#   GRID4EARTH-aligned answer: same diamond cells as HEALPix-on-sphere
+#   but cells are equal-area on WGS84 (the actual Earth shape) via the
+#   authalic-sphere mapping. Visual is nearly identical at this resolution
+#   - the point is that ellipsoidal correctness is "free" here, not
+#   visible in the kernel shape but present in the cell areas.
+# Row 2 — other DGGS family members (H3, rHEALPix, ISEA3H).
+row_0 = [
     ("Lat-lon 1° × 1° (cautionary baseline)", "tab:red",
      latlon_3x3_window(ANCHOR_LAT, ANCHOR_LON)),
     ("Behrmann (equal-area projection)", "tab:purple",
      behrmann_3x3_window(ANCHOR_LAT, ANCHOR_LON)),
     ("Mollweide 100 km (equal-area projection)", "indigo",
      mollweide_kernel(ANCHOR_LAT, ANCHOR_LON)),
+]
+row_1 = [
     ("EEA reference grid 100 km (LAEA Europe)", "orchid",
      eea_kernel(ANCHOR_LAT, ANCHOR_LON)),
-]
-dggs_family = [
     (f"HEALPix nside={NSIDE} (DGGS, sphere)", "tab:blue",
      healpix_3x3_window(ANCHOR_LAT, ANCHOR_LON, NSIDE)),
+    (f"HEALPix-geo nside={NSIDE} (DGGS, WGS84 — GRID4EARTH)",
+     "royalblue",
+     healpix_geo_wgs84_kernel(ANCHOR_LAT, ANCHOR_LON, depth=6)),
+]
+row_2 = [
     (f"H3 res {H3_RES} (DGGS, hexagonal)", "tab:cyan",
      h3_kernel(ANCHOR_LAT, ANCHOR_LON, H3_RES)),
-    (f"rHEALPix res {RHP_RES} (DGGS, WGS84)", "teal",
+    (f"rHEALPix res {RHP_RES} (DGGS, WGS84 cube-projected)", "teal",
      rhealpix_kernel(ANCHOR_LAT, ANCHOR_LON, RHP_RES)),
     (f"ISEA3H res {ISEA3H_RES} (DGGS, hex icosahedral)", "seagreen",
      isea3h_kernel(ANCHOR_LAT, ANCHOR_LON, ISEA3H_RES)),
 ]
 
-fig = plt.figure(figsize=(20, 11))
-gs = fig.add_gridspec(2, 4, wspace=0.05, hspace=0.18)
+fig = plt.figure(figsize=(16, 16))
+gs = fig.add_gridspec(3, 3, wspace=0.05, hspace=0.18)
 
 
 def _draw_kernel_panel(ax, name, color, cells):
@@ -398,7 +439,7 @@ def _draw_kernel_panel(ax, name, color, cells):
             markerfacecolor="black", markeredgecolor="white",
             markeredgewidth=1.2, transform=ccrs.PlateCarree(), zorder=5)
     width, height, aspect = window_metrics(cells, ANCHOR_LAT, ANCHOR_LON)
-    ax.set_title(name, fontsize=10, fontweight="bold")
+    ax.set_title(name, fontsize=9.5, fontweight="bold")
     ax.text(
         0.02, 0.98,
         f"@ 65°N, 15°E\n"
@@ -414,28 +455,16 @@ def _draw_kernel_panel(ax, name, color, cells):
     )
 
 
-# Row 0 — projection family
-for col, (name, color, cells) in enumerate(projection_family):
-    ax = fig.add_subplot(gs[0, col], projection=display_proj)
-    _draw_kernel_panel(ax, name, color, cells)
-
-# Row 1 — DGGS family
-for col, (name, color, cells) in enumerate(dggs_family):
-    ax = fig.add_subplot(gs[1, col], projection=display_proj)
-    _draw_kernel_panel(ax, name, color, cells)
+for row_idx, row_panels in enumerate([row_0, row_1, row_2]):
+    for col, (name, color, cells) in enumerate(row_panels):
+        ax = fig.add_subplot(gs[row_idx, col], projection=display_proj)
+        _draw_kernel_panel(ax, name, color, cells)
 
 fig.suptitle(
-    "What does an ML kernel see at 65°N? — projection family (top row) vs DGGS family (bottom row)",
-    fontsize=14, fontweight="bold", y=0.995,
+    "What does an ML kernel see at 65°N? — projection family (top), "
+    "EEA + HEALPix sphere/WGS84 (middle), other DGGS (bottom)",
+    fontsize=13, fontweight="bold", y=0.995,
 )
-
-# Row labels on the left margin
-fig.text(0.085, 0.74, "Projection-based grids\n(Tier 2: equal-area\nbut shape distorts)",
-         ha="right", va="center", fontsize=10, fontweight="bold",
-         color="tab:purple", rotation=90)
-fig.text(0.085, 0.27, "DGGS family\n(Tier 3: equal-area\nAND compact shape)",
-         ha="right", va="center", fontsize=10, fontweight="bold",
-         color="tab:blue", rotation=90)
 
 # Caption
 fig.text(

@@ -12,6 +12,7 @@ dependencies:
   - geopandas
   - shapely
   - dggrid=8.41
+  - healpix-geo
   - jupytext
   - nbclient
   - ipykernel
