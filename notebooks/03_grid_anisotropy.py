@@ -56,6 +56,7 @@ import shutil
 import cartopy.crs as ccrs
 import geopandas as gpd
 import h3
+import healpix_geo.nested as hgn
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -128,6 +129,24 @@ def healpix_cell_vertices(lat_c, lon_c, nside=16, n_edge=20):
     cell_lat = 90.0 - np.degrees(np.arccos(z))
     cell_lon = np.degrees(np.arctan2(y, x))
     return cell_lat, cell_lon
+
+
+def healpix_geo_cell_vertices(lat_c, lon_c, depth=4):
+    """HEALPix cell on the WGS84 ellipsoid (via healpix-geo / cdshealpix).
+
+    `healpix-geo` implements the GRID4EARTH "Ellipsoidal HEALPix" path:
+    HEALPix indexing whose cell vertices are computed on the WGS84
+    ellipsoid via authalic-sphere mapping. depth=4 (nside=16) matches
+    the HEALPix-on-sphere resolution used elsewhere in this notebook.
+    """
+    centre = hgn.lonlat_to_healpix(
+        np.array([float(lon_c)]), np.array([float(lat_c)]),
+        depth=depth, ellipsoid="WGS84",
+    )
+    lons_v, lats_v = hgn.vertices(
+        centre.astype(np.uint64), depth=depth, ellipsoid="WGS84",
+    )
+    return np.asarray(lats_v[0]), np.asarray(lons_v[0])
 
 
 def h3_cell_vertices(lat_c, lon_c, resolution=3):
@@ -370,6 +389,10 @@ aspect_healpix = [
     cell_metrics(*healpix_cell_vertices(lat, 0.0, nside=NSIDE), lat, 0.0)[2]
     for lat in lat_grid
 ]
+aspect_healpix_geo = [
+    cell_metrics(*healpix_geo_cell_vertices(lat, 0.0, depth=4), lat, 0.0)[2]
+    for lat in lat_grid
+]
 aspect_h3 = [
     cell_metrics(*h3_cell_vertices(lat, 0.0), lat, 0.0)[2]
     for lat in lat_grid
@@ -398,13 +421,16 @@ ax_bottom.plot(lat_grid, aspect_eea, color="orchid", lw=1.6, linestyle=":",
 
 # Tier 3 (DGGS family — preserves shape)
 ax_bottom.plot(lat_grid, aspect_healpix, color="tab:blue", lw=2.0,
-               label=f"HEALPix nside={NSIDE} (DGGS)")
+               label=f"HEALPix nside={NSIDE} (DGGS, sphere)")
+ax_bottom.plot(lat_grid, aspect_healpix_geo, color="royalblue", lw=1.6,
+               linestyle="--",
+               label=f"HEALPix-geo nside={NSIDE} (DGGS, WGS84 — GRID4EARTH)")
 ax_bottom.plot(lat_grid, aspect_h3, color="tab:cyan", lw=1.6, linestyle="--",
                label="H3 res 3 (DGGS, hexagonal)")
 ax_bottom.plot(lat_grid, aspect_rhealpix, color="teal", lw=1.6, linestyle=":",
-               label="rHEALPix res 4 (DGGS, WGS84)")
+               label="rHEALPix res 4 (DGGS, WGS84 cube-projected)")
 ax_bottom.plot(lat_grid, aspect_isea3h, color="seagreen", lw=1.6, linestyle="-.",
-               label="ISEA3H res 8 (DGGS, hexagonal icosahedral)")
+               label="ISEA3H res 8 (DGGS, hex icosahedral)")
 
 ax_bottom.axhline(1.0, color="0.5", linestyle=":", linewidth=0.8)
 ax_bottom.set_xlabel("Latitude (°N)")
