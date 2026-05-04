@@ -35,8 +35,9 @@ Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Conn
 | Mollweide 100 km | 1.3 | Tier 2 |
 | Lat-lon 1° | 1.2 | Tier 1 (cautionary) |
 | EEA reference grid 100 km | 1.0 | Tier 2 (azimuthal — preserves shape near 52°N centre) |
-| rHEALPix res 4 | 1.2 | Tier 3 (DGGS) |
-| HEALPix nside=64 | 1.3 | Tier 3 |
+| HEALPix nside=64 (sphere) | 1.3 | Tier 3 |
+| **HEALPix-geo nside=64 (WGS84 — GRID4EARTH path)** | **1.3** | **Tier 3** |
+| rHEALPix res 4 (WGS84 cube-projected) | 1.2 | Tier 3 (DGGS) |
 | H3 res 3 | 1.0 | Tier 3 |
 | ISEA3H res 8 | 1.2 | Tier 3 |
 
