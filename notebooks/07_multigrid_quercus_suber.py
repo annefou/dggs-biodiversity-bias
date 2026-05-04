@@ -60,6 +60,7 @@ from pathlib import Path
 import cartopy.crs as ccrs
 import geopandas as gpd
 import h3
+import healpix_geo.nested as hgn
 import healpy as hp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -161,6 +162,34 @@ counts_healpix = np.bincount(pix, minlength=NPIX)
 print(f"HEALPix nside={NSIDE}: {NPIX:,} cells globally, "
       f"each {HEALPIX_CELL_AREA:,.0f} km²; "
       f"{int(np.sum(counts_healpix > 0)):,} occupied in window")
+
+# %% [markdown]
+# ## Step 4b: Aggregate on HEALPix-geo (HEALPix on WGS84 ellipsoid)
+#
+# `healpix-geo` is the package implementing the **GRID4EARTH (ESA)
+# "Ellipsoidal HEALPix"** approach: HEALPix indexing whose cell
+# vertices are computed on the WGS84 ellipsoid via authalic-sphere
+# mapping. Cell area is exactly equal-area on Earth's actual oblate
+# shape (not on the unit sphere). depth=6 corresponds to nside=64.
+# The cell IDs are the same NESTED-ordered integers as
+# `hp.ang2pix(..., nest=True)`; only the cell *boundaries* differ
+# slightly (~0.7% area shift at boreal latitudes — see notebook 08).
+# Density patterns over Q. suber's range will look nearly identical
+# to the HEALPix-on-sphere panel; the difference is precision-grade,
+# not visual.
+
+# %%
+HEALPIX_GEO_DEPTH = 6  # nside = 2^depth = 64
+HEALPIX_GEO_CELL_AREA = HEALPIX_CELL_AREA  # essentially the same for plotting
+
+# WGS84-ellipsoid HEALPix cell index for each Q. suber point.
+pix_geo = hgn.lonlat_to_healpix(
+    lons_r.astype(np.float64), lats_r.astype(np.float64),
+    depth=HEALPIX_GEO_DEPTH, ellipsoid="WGS84",
+)
+counts_healpix_geo = np.bincount(pix_geo, minlength=NPIX)
+print(f"HEALPix-geo nside={NSIDE} (WGS84): "
+      f"{int(np.sum(counts_healpix_geo > 0)):,} occupied cells in window")
 
 # %% [markdown]
 # ## Step 5: Aggregate on H3 resolution 3 (icosahedral hexagonal DGGS)
@@ -375,6 +404,18 @@ healpix_field = counts_healpix[plot_pix].astype(float)
 healpix_density = healpix_field / HEALPIX_CELL_AREA
 healpix_density_masked = np.ma.masked_where(healpix_field == 0, healpix_density)
 
+# HEALPix-geo (WGS84): lookup pix per plot pixel via healpix-geo
+plot_pix_geo = hgn.lonlat_to_healpix(
+    plot_lon_g.ravel().astype(np.float64),
+    plot_lat_g.ravel().astype(np.float64),
+    depth=HEALPIX_GEO_DEPTH, ellipsoid="WGS84",
+).reshape(plot_lat_g.shape)
+healpix_geo_field = counts_healpix_geo[plot_pix_geo].astype(float)
+healpix_geo_density = healpix_geo_field / HEALPIX_GEO_CELL_AREA
+healpix_geo_density_masked = np.ma.masked_where(
+    healpix_geo_field == 0, healpix_geo_density,
+)
+
 # H3: lookup cell per plot pixel
 plot_cells_h3 = [
     h3.latlng_to_cell(float(lat), float(lon), H3_RES)
@@ -463,6 +504,7 @@ density_latlon_masked = np.ma.masked_where(counts_latlon == 0, density_latlon)
 shared_vmax = float(np.percentile(np.concatenate([
     density_latlon_masked.compressed(),
     healpix_density_masked.compressed(),
+    healpix_geo_density_masked.compressed(),
     h3_density_masked.compressed(),
     rhp_density_masked.compressed(),
     moll_density_masked.compressed(),
@@ -471,11 +513,12 @@ shared_vmax = float(np.percentile(np.concatenate([
 ]), 98))
 
 # %% [markdown]
-# ## Step 7: Seven-panel comparison
+# ## Step 7: Eight-panel comparison
 #
-# Same data, seven grids. The six equal-area grids (HEALPix, H3,
-# rHEALPix, Mollweide, EEA, ISEA3H) should agree on the apparent
-# density pattern. The lat-lon panel is the cautionary case.
+# Same data, eight grids. The seven equal-area grids (HEALPix-sphere,
+# HEALPix-geo on WGS84, H3, rHEALPix, Mollweide, EEA, ISEA3H) should
+# agree on the apparent density pattern. The lat-lon panel is the
+# cautionary case.
 
 # %%
 fig = plt.figure(figsize=(20, 16))
@@ -484,17 +527,19 @@ gs = fig.add_gridspec(3, 3, wspace=0.18, hspace=0.32)
 panels = [
     ("A. Lat-lon 1° (cautionary baseline)\nrecords / km²",
      density_latlon_masked, lon_edges, lat_edges, "edges"),
-    (f"B. HEALPix nside={NSIDE} (equal-area DGGS, sphere)\nrecords / km²",
+    (f"B. HEALPix nside={NSIDE} (DGGS, sphere)\nrecords / km²",
      healpix_density_masked, plot_lons, plot_lats, "centres"),
-    (f"C. H3 resolution {H3_RES} (hexagonal DGGS, ~equal-area)\nrecords / km²",
+    (f"C. HEALPix-geo nside={NSIDE} (DGGS, WGS84 — GRID4EARTH)\nrecords / km²",
+     healpix_geo_density_masked, plot_lons, plot_lats, "centres"),
+    (f"D. H3 resolution {H3_RES} (hexagonal DGGS, ~equal-area)\nrecords / km²",
      h3_density_masked, plot_lons, plot_lats, "centres"),
-    (f"D. rHEALPix resolution {RHP_RES} (equal-area DGGS, WGS84)\nrecords / km²",
+    (f"E. rHEALPix resolution {RHP_RES} (DGGS, WGS84 cube-projected)\nrecords / km²",
      rhp_density_masked, plot_lons, plot_lats, "centres"),
-    (f"E. Mollweide {MOLL_CELL_SIDE_KM:.0f} km cells (equal-area projection)\nrecords / km²",
+    (f"F. Mollweide {MOLL_CELL_SIDE_KM:.0f} km cells (equal-area projection)\nrecords / km²",
      moll_density_masked, plot_lons, plot_lats, "centres"),
-    (f"F. EEA reference grid {EEA_CELL_SIDE_KM:.0f} km cells (LAEA Europe / EPSG:3035)\nrecords / km²",
+    (f"G. EEA reference grid {EEA_CELL_SIDE_KM:.0f} km cells (LAEA Europe / EPSG:3035)\nrecords / km²",
      eea_density_masked, plot_lons, plot_lats, "centres"),
-    (f"G. ISEA3H resolution {ISEA3H_RES} (icosahedral hexagonal DGGS)\nrecords / km²",
+    (f"H. ISEA3H resolution {ISEA3H_RES} (icosahedral hexagonal DGGS)\nrecords / km²",
      isea_density_masked, plot_lons, plot_lats, "centres"),
 ]
 
@@ -515,8 +560,8 @@ for k, (title, data, x, y, kind) in enumerate(panels):
                  label="Records per km²", shrink=0.9)
 
 fig.suptitle(
-    "Quercus suber GBIF — same data on seven grids "
-    "(lat-lon vs HEALPix vs H3 vs rHEALPix vs Mollweide vs EEA vs ISEA3H)",
+    "Quercus suber GBIF — same data on eight grids "
+    "(lat-lon vs HEALPix sphere/WGS84 vs H3 vs rHEALPix vs Mollweide vs EEA vs ISEA3H)",
     fontsize=14, fontweight="bold", y=1.00,
 )
 plt.savefig("../images/multigrid_quercus_suber.png", dpi=150,
