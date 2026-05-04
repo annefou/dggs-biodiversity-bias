@@ -1,5 +1,11 @@
 # dggs-biodiversity-bias
 
+[![Concept DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19848749.svg)](https://doi.org/10.5281/zenodo.19848749)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Jupyter Book](https://img.shields.io/badge/Jupyter%20Book-deployed-blue?logo=jupyter)](https://annefou.github.io/dggs-biodiversity-bias/)
+[![Build & Deploy](https://github.com/annefou/dggs-biodiversity-bias/actions/workflows/jupyter-book.yml/badge.svg)](https://github.com/annefou/dggs-biodiversity-bias/actions/workflows/jupyter-book.yml)
+[![Container](https://img.shields.io/badge/ghcr.io-dggs--biodiversity--bias-blue?logo=docker)](https://github.com/annefou/dggs-biodiversity-bias/pkgs/container/dggs-biodiversity-bias)
+
 > Why equal-area DGGS cells matter for climate-driven biodiversity science — and why HEALPix is the right common DGGS for the *integration* of biodiversity with high-resolution Copernicus EO and Destination Earth climate models.
 
 Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Connector"** (EGU26-11348, ESSI2.6). Eight reproducible notebooks make a layered argument:
