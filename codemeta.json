@@ -1,12 +1,14 @@
 {
   "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
   "@type": "SoftwareSourceCode",
-  "version": "0.1.0",
-  "name": "dggs-biodiversity-bias — why equal-area cells matter for biodiversity (and why DGGS adds shape and hierarchy)",
-  "description": "A pedagogical and supporting-evidence repository for the EGU 2026 talk EGU26-11348 (Fouilloux et al., LifeWatch ERIC). Six reproducible notebooks: (01) a synthetic mathematical proof that lat-lon grids systematically inflate biodiversity counts toward the equator with up to 23x bias from cell geometry alone; (02) a real-data demonstration on 20,100 Quercus suber GBIF occurrences; (03) cell-shape anisotropy quantification across grid systems; (04) a kernel-footprint comparison showing what an ML model literally sees on lat-lon, Behrmann (cylindrical equal-area), and HEALPix at 65N; (05) a 3-grid synthetic comparison establishing that Behrmann and HEALPix both solve the count bias; (06) a single-panel illustration of HEALPix NESTED hierarchical refinement (parent -> 16 children -> 256 descendants, deterministic bit-shift on the cell index, no reprojection). Together the notebooks make the slide-5 argument that equal-area is a statistical correctness choice and that for AI-ready biodiversity data, cell shape and multi-resolution hierarchy are correctness choices too.",
+  "version": "0.2.1",
+  "name": "dggs-biodiversity-bias — a common DGGS for the integration of biodiversity with Copernicus EO and Destination Earth climate models",
+  "description": "A pedagogical and supporting-evidence repository for the EGU 2026 talk EGU26-11348 (Fouilloux et al., LifeWatch ERIC, ESSI2.6). Eight reproducible notebooks make a four-step layered argument: (1) Equal-area is necessary for biodiversity counts — lat-lon over-counts toward the equator by up to 23x at 5-degree resolution, purely from cell geometry. (2) Six equal-area choices pass the count test on real GBIF data: HEALPix, H3, rHEALPix, ISEA3H, Mollweide, and the EEA reference grid (LAEA Europe / EPSG:3035 / INSPIRE / Habitats Directive standard) all agree on biodiversity density patterns over Quercus suber's Mediterranean range — for biodiversity counts in isolation, the choice between equal-area DGGS is not a count-correctness question. (3) The DGGS family (HEALPix, H3, rHEALPix, ISEA3H) preserves cell shape across latitudes while the projection family (Behrmann, Mollweide, EEA reference grid) does not — a property that matters for ML kernels on stacked feature cubes. (4) HEALPix is the right common DGGS for the integrated future of biodiversity science with high-resolution Copernicus EO and Destination Earth climate models, by virtue of its native geometric-deep-learning ecosystem (DeepSphere, foscat / FIESTA scattering networks), native sphere-harmonic transforms, NESTED bit-shift O(1) hierarchical refinement, iso-latitude pixelization, and a credible ellipsoidally-correct path via rHEALPix or 'Ellipsoidal HEALPix' (the ESA GRID4EARTH approach). The repository is the biodiversity-side version of the case GRID4EARTH makes for Ellipsoidal HEALPix as a Common DGGS bridging Copernicus EO and Destination Earth.",
   "license": "https://spdx.org/licenses/MIT",
   "codeRepository": "https://github.com/annefou/dggs-biodiversity-bias",
+  "identifier": "https://doi.org/10.5281/zenodo.19848749",
   "dateCreated": "2026-04-13",
+  "dateModified": "2026-05-04",
   "programmingLanguage": "Python",
   "runtimePlatform": "Python 3.11",
   "author": [
@@ -72,8 +74,9 @@
     }
   ],
   "isPartOf": [
-    { "@type": "SoftwareApplication", "name": "Science Live", "url": "https://platform.sciencelive4all.org" },
-    { "@type": "Project",             "name": "FAIR2Adapt",   "url": "https://fair2adapt-eosc.eu/" }
+    { "@type": "SoftwareApplication", "name": "Science Live",  "url": "https://platform.sciencelive4all.org" },
+    { "@type": "Project",             "name": "FAIR2Adapt",    "url": "https://fair2adapt-eosc.eu/" },
+    { "@type": "Project",             "name": "ESA GRID4EARTH", "url": "https://www.grid4earth.eu" }
   ],
   "keywords": [
     "HEALPix",
@@ -82,12 +85,27 @@
     "equal-area projection",
     "Behrmann",
     "Mollweide",
+    "H3",
+    "ISEA3H",
+    "rHEALPix",
+    "EEA reference grid",
+    "INSPIRE",
+    "LAEA Europe",
     "biodiversity",
+    "climate-driven biodiversity",
     "GBIF",
     "species distribution model",
     "SDM",
     "Quercus suber",
     "AI-ready",
+    "geometric deep learning",
+    "spherical CNN",
+    "scattering networks",
+    "foscat",
+    "Copernicus",
+    "Destination Earth",
+    "GRID4EARTH",
+    "ellipsoidal HEALPix",
     "FAIR",
     "reproducible research"
   ]

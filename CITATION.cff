@@ -1,11 +1,15 @@
 cff-version: 1.2.0
-title: "dggs-biodiversity-bias — why equal-area cells matter for biodiversity (and why DGGS adds shape and hierarchy)"
+title: "dggs-biodiversity-bias — a common DGGS for the integration of biodiversity with Copernicus EO and Destination Earth climate models"
 message: >-
   If you use this software, please cite this repository together with
   the foundational HEALPix and DGGS references and the recent
   biodiversity-DGGS demonstrations listed below.
 type: software
-version: "0.1.0"
+version: "0.2.1"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.19848749
+    description: "Zenodo concept DOI (always resolves to the latest version)"
 authors:
   - given-names: Anne
     family-names: Fouilloux
@@ -13,7 +17,7 @@ authors:
     affiliation: LifeWatch ERIC
 repository-code: "https://github.com/annefou/dggs-biodiversity-bias"
 license: MIT
-date-released: "2026-04-28"
+date-released: "2026-05-04"
 keywords:
   - HEALPix
   - DGGS
@@ -21,12 +25,27 @@ keywords:
   - equal-area projection
   - Behrmann
   - Mollweide
+  - H3
+  - ISEA3H
+  - rHEALPix
+  - EEA reference grid
+  - INSPIRE
+  - LAEA Europe
   - biodiversity
+  - climate-driven biodiversity
   - GBIF
   - species distribution model
   - SDM
   - Quercus suber
   - AI-ready
+  - geometric deep learning
+  - spherical CNN
+  - scattering networks
+  - foscat
+  - Copernicus
+  - Destination Earth
+  - GRID4EARTH
+  - ellipsoidal HEALPix
   - FAIR
   - reproducible research
 references:
