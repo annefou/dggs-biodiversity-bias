@@ -23,6 +23,8 @@ Supporting evidence for the EGU 2026 talk **"LifeWatch ERIC as Catalyst and Conn
 
    For **biodiversity-only counts at coarse resolution** any equal-area DGGS works; HEALPix is competitive but not uniquely necessary. **For the integrated future where biodiversity, climate models, and high-resolution EO data share one common DGGS**, HEALPix is the right substrate — not because it is "best for biodiversity" but because the climate-model and spherical-ML sides already live on it, and integration cost dominates.
 
+> **HEALPix terminology (GRID4EARTH).** These notebooks use HEALPix at `nside = 16` and `nside = 64`. In the GRID4EARTH / [`healpix-geo`](https://healpix-geo.readthedocs.io/) vocabulary those are **depth 4** and **depth 6** (`nside = 2**depth`). HEALPix bins are **cells** (a `uint64` **`ipix`** index) in **NESTED** ordering; the equal-area-on-the-**WGS84 ellipsoid** guarantee (the whole point of this repo) comes from the authalic-sphere mapping `healpix-geo` provides — the "GRID4EARTH path" shown in the comparison.
+
 ## Headline numbers
 
 **Step 1 — count bias of lat-lon (notebook 01–02):** at 5° resolution a 1 M-point uniform random distribution shows **23× more "occurrences per cell"** at the equator than at 85°N — purely from cell-area geometry, no biology.
