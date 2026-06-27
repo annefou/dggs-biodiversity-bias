@@ -57,7 +57,7 @@ DISPLAY_HALF_EXTENT_KM = 1500e3
 
 # %%
 def nested_descendants(parent_pix, parent_nside, target_nside):
-    """All NESTED pixel indices at `target_nside` that descend from
+    """All NESTED cell indices at `target_nside` that descend from
     `parent_pix` at `parent_nside`. Refinement factor must be a
     power of 2."""
     factor = target_nside // parent_nside

@@ -100,13 +100,13 @@ print(f"Ratio equator/85°:           {cell_areas[len(lat_centers)//2, 0] / cell
 # has exactly the same area, regardless of latitude.
 
 # %%
-NSIDE = 16
+NSIDE = 16  # depth 4 (nside = 2**4 = 16)
 NPIX = hp.nside2npix(NSIDE)
 
-# Convert lat/lon to HEALPix pixel indices
+# Convert lat/lon to HEALPix cell indices
 pixel_indices = hp.ang2pix(NSIDE, theta, phi, nest=True)
 
-# Count occurrences per pixel
+# Count occurrences per cell
 counts_healpix = np.bincount(pixel_indices, minlength=NPIX)
 
 # All HEALPix cells have the same area
