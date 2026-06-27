@@ -359,17 +359,17 @@ assert all(p == parent_pix for p in parent_check)
 # ## Section C — Iso-latitude pixelization: zonal analyses are trivial
 #
 # In HEALPix every cell belongs to a "ring" of cells at the same
-# colatitude. The ring number is recoverable from the pixel index in
+# colatitude. The ring number is recoverable from the cell index in
 # RING ordering directly; in NESTED ordering it is one healpy call
 # (`hp.pix2ang`) but the underlying property is the same:
 #
-# > **All HEALPix pixels in the same ring sit at exactly the same
+# > **All HEALPix cells in the same ring sit at exactly the same
 # > latitude.**
 #
 # This makes zonal analyses — climate-zone × biodiversity stats,
 # latitudinal phenology curves, latitudinal extinction-risk gradients
 # — almost free. No spatial query, no polygon clipping; just group
-# pixels by ring index.
+# cells by ring index.
 #
 # Hexagonal DGGS (H3, ISEA3H) do not have this property: cells on the
 # "same row" of a hex tessellation are at slightly different latitudes
@@ -378,17 +378,17 @@ assert all(p == parent_pix for p in parent_check)
 # HEALPix.
 
 # %%
-NSIDE_RINGS = 16
+NSIDE_RINGS = 16  # depth 4 (nside = 2**4 = 16)
 
-# Pick a ring at HEALPix nside=16 and confirm every pixel in the ring
+# Pick a ring at HEALPix depth 4 (nside=16) and confirm every cell in the ring
 # has the same latitude.
 ring_idx = 12  # 0-indexed; ring 0 is at the north pole
 ring_pix = hp.query_strip(NSIDE_RINGS,
                           theta1=0, theta2=np.pi,
                           inclusive=False, nest=False)
-# query_strip returns all pixels in a colatitude range; for an
+# query_strip returns all cells in a colatitude range; for an
 # iso-latitude demonstration we use ring2pix-equivalent: use the fact
-# that in RING ordering, pixels are stored ring-by-ring. Equivalent:
+# that in RING ordering, cells are stored ring-by-ring. Equivalent:
 ring_pix_in_ring = []
 for pix_ring in range(hp.nside2npix(NSIDE_RINGS)):
     th, _ = hp.pix2ang(NSIDE_RINGS, pix_ring, nest=False)
@@ -398,14 +398,14 @@ for pix_ring in range(hp.nside2npix(NSIDE_RINGS)):
 # Convert back to NESTED indices for use elsewhere in the notebook
 ring_pix_nest = hp.ring2nest(NSIDE_RINGS, np.array(ring_pix_in_ring))
 
-# Confirm all pixels in the ring share the same colatitude
+# Confirm all cells in the ring share the same colatitude
 ring_thetas, ring_phis = hp.pix2ang(NSIDE_RINGS,
                                      np.array(ring_pix_in_ring),
                                      nest=False)
-print(f"HEALPix nside={NSIDE_RINGS}: ring contains {len(ring_pix_in_ring)} pixels")
-print(f"Colatitude θ of all pixels in the ring: "
+print(f"HEALPix nside={NSIDE_RINGS}: ring contains {len(ring_pix_in_ring)} cells")
+print(f"Colatitude θ of all cells in the ring: "
       f"min={ring_thetas.min():.10f}, max={ring_thetas.max():.10f}")
-print(f"Latitude    of all pixels in the ring: "
+print(f"Latitude    of all cells in the ring: "
       f"{90.0 - np.degrees(ring_thetas[0]):.4f}°")
 assert np.allclose(ring_thetas, ring_thetas[0])
 
@@ -432,7 +432,7 @@ all_lats = 90.0 - np.degrees(all_thetas)
 all_lons = np.degrees(all_phis)
 all_lons = np.where(all_lons > 180, all_lons - 360, all_lons)
 
-# Colour pixels by ring index (= unique colatitude)
+# Colour cells by ring index (= unique colatitude)
 unique_thetas = np.unique(np.round(all_thetas, 10))
 ring_id = np.searchsorted(unique_thetas, np.round(all_thetas, 10))
 
@@ -503,7 +503,7 @@ plt.show()
 #    cell. No projection, no resampling, no hash lookup. Critical for
 #    Copernicus Zarr × biodiversity tile pipelines.
 # 3. **Iso-latitude pixelization** makes zonal climate-zone analyses
-#    essentially free — group pixels by ring, no spatial query needed.
+#    essentially free — group cells by ring, no spatial query needed.
 #
 # Together with the count-bias arguments (notebooks 01–02, 07) and the
 # shape-preservation arguments (notebooks 03–04), these are why HEALPix

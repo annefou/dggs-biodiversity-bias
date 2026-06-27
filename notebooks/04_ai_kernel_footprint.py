@@ -483,7 +483,7 @@ plt.show()
 # ## What the figure shows
 #
 # All eight panels are drawn on the same Lambert azimuthal equal-area
-# map centred on **65°N, 15°E**. The black dot marks the anchor pixel.
+# map centred on **65°N, 15°E**. The black dot marks the anchor cell.
 # Every panel shows the **same conceptual operator** — an ML kernel
 # (3×3 quadrilateral or hexagonal 1-ring) — but the *physical*
 # geography that operator covers depends entirely on the grid.
