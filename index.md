@@ -21,6 +21,8 @@ The argument the eight notebooks make:
 
    The honest conclusion: for **biodiversity counts at coarse resolution in isolation**, any equal-area DGGS works and the choice is largely about ecosystem (EEA grid is the European regulatory standard; H3 has GIS-industry momentum; ISEA3H has Eco-ISEA3H paper alignment). For **biodiversity integrated with Copernicus EO and climate models on a single common DGGS** — the GRID4EARTH future — HEALPix is the right substrate, not because it is "best for biodiversity" but because the climate-model and spherical-ML sides already live on it, and integration cost dominates.
 
+> **HEALPix terminology (GRID4EARTH).** These notebooks use HEALPix at `nside = 16` and `nside = 64`. In the GRID4EARTH / [`healpix-geo`](https://healpix-geo.readthedocs.io/) vocabulary those are **depth 4** and **depth 6** (`nside = 2**depth`). HEALPix bins are **cells** (a `uint64` **`ipix`** index) in **NESTED** ordering; the equal-area-on-the-**WGS84 ellipsoid** guarantee (the whole point of this repo) comes from the authalic-sphere mapping `healpix-geo` provides — the "GRID4EARTH path" shown in the comparison.
+
 ## What this Jupyter Book contains
 
 Eight notebooks, each one a single, focused piece of evidence:
