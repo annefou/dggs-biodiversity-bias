@@ -21,3 +21,5 @@ project:
 
 site:
   title: "dggs-biodiversity-bias"
+  options:
+    favicon: favicon.png
